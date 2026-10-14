@@ -3,8 +3,8 @@ import express from "express";
 import cors from "cors";
 import bcrypt2 from "bcryptjs";
 import jwt from "jsonwebtoken";
-import dotenv3 from "dotenv";
-import path4 from "path";
+import dotenv4 from "dotenv";
+import path5 from "path";
 import fs2 from "fs";
 
 // server/db.ts
@@ -283,7 +283,8 @@ var INITIAL_PRODUCTS = [
     isPaketUpgrade: false,
     stock: 10,
     originCity: "Jakarta Timur",
-    bikeCompatibility: ["vario-pcx", "nmax-aerox"]
+    bikeCompatibility: ["vario-pcx", "nmax-aerox"],
+    bikeVariants: ["Vario 160 / PCX 160", "All New NMAX / Aerox 155 Connected"]
   },
   {
     id: "prod-5",
@@ -416,6 +417,7 @@ function createInMemoryDb() {
       isPromo: p.isPromo ? 1 : 0,
       isPaketUpgrade: p.isPaketUpgrade ? 1 : 0,
       variation_groups: p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+      bike_variants: p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
       weight_grams: p.weight_grams || 500,
       is_active: 1,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -1077,6 +1079,7 @@ function initDb() {
     ensureColumn("orders", "destination_area_id", "TEXT");
     ensureColumn("orders", "customer_notes", "TEXT");
     ensureColumn("products", "variation_groups", "TEXT");
+    ensureColumn("products", "bike_variants", "TEXT");
     try {
       const prods = db.prepare("SELECT id, name, slug FROM products").all();
       const updateSlug = db.prepare(
@@ -1086,6 +1089,14 @@ function initDb() {
         if (!p.slug) {
           const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
           updateSlug.run(slug, p.id);
+        }
+      }
+      const updateVariants = db.prepare(
+        'UPDATE products SET bike_variants = ? WHERE id = ? AND (bike_variants IS NULL OR bike_variants = "[]")'
+      );
+      for (const p of INITIAL_PRODUCTS) {
+        if (p.bikeVariants) {
+          updateVariants.run(JSON.stringify(p.bikeVariants), p.id);
         }
       }
     } catch (e) {
@@ -1142,11 +1153,77 @@ function initDb() {
 }
 var db_default = db;
 
-// server/midtrans.ts
-import crypto from "crypto";
+// server/supabase.ts
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import path2 from "path";
 dotenv.config({ path: path2.resolve(process.cwd(), ".env") });
+var supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+var supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || "";
+var client = null;
+function isSupabaseConfigured() {
+  return Boolean(
+    supabaseUrl && supabaseUrl.trim() !== "" && !supabaseUrl.includes("your-project") && supabaseKey && supabaseKey.trim() !== ""
+  );
+}
+if (isSupabaseConfigured()) {
+  try {
+    client = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+    console.log("[Supabase] Initialized client for:", supabaseUrl);
+  } catch (err) {
+    console.warn("[Supabase] Failed to initialize Supabase client:", err);
+  }
+} else {
+  console.log("[Supabase] Credentials not detected in environment. Running with local resilient storage engine.");
+}
+async function checkSupabaseHealth() {
+  if (!isSupabaseConfigured() || !client) {
+    return {
+      configured: false,
+      connected: false,
+      error: "Environment variables for Supabase (NEXT_PUBLIC_SUPABASE_URL & SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY) are not set."
+    };
+  }
+  try {
+    const { data, error } = await client.from("products").select("id").limit(1);
+    if (error) {
+      const isPermDenied = error.code === "42501" || error.message?.includes("permission denied");
+      return {
+        configured: true,
+        connected: false,
+        url: supabaseUrl,
+        code: error.code || "UNKNOWN",
+        error: error.message || "Permission denied or query error",
+        fixGuide: isPermDenied ? "Error 42501 (Permission Denied): Buka Supabase Dashboard -> SQL Editor, lalu jalankan script: GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role; GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role; GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;" : error.message
+      };
+    }
+    const countRes = await client.from("products").select("*", { count: "exact", head: true });
+    return {
+      configured: true,
+      connected: true,
+      url: supabaseUrl,
+      productsCount: countRes.count || (data ? data.length : 0)
+    };
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      url: supabaseUrl,
+      error: err.message || "Unknown network error"
+    };
+  }
+}
+
+// server/midtrans.ts
+import crypto from "crypto";
+import dotenv2 from "dotenv";
+import path3 from "path";
+dotenv2.config({ path: path3.resolve(process.cwd(), ".env") });
 var MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || "";
 var MIDTRANS_CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY || "";
 var MIDTRANS_IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === "true";
@@ -1253,9 +1330,9 @@ function verifyMidtransSignature(orderId, statusCode, grossAmount, providedSigna
 }
 
 // server/biteship.ts
-import dotenv2 from "dotenv";
-import path3 from "path";
-dotenv2.config({ path: path3.resolve(process.cwd(), ".env") });
+import dotenv3 from "dotenv";
+import path4 from "path";
+dotenv3.config({ path: path4.resolve(process.cwd(), ".env") });
 var BITESHIP_API_KEY = process.env.BITESHIP_API_KEY || "";
 var BITESHIP_ORIGIN_AREA_ID = process.env.BITESHIP_ORIGIN_AREA_ID || "IDNP6IDNC419IDND2093";
 var BITESHIP_BASE_URL = "https://api.biteship.com/v1";
@@ -1445,25 +1522,33 @@ async function trackBiteshipShipment(trackingIdOrWaybill, courierCode) {
 }
 
 // server/index.ts
-dotenv3.config({ path: path4.resolve(process.cwd(), ".env") });
+dotenv4.config({ path: path5.resolve(process.cwd(), ".env") });
 var JWT_SECRET = process.env.JWT_SECRET || "super-secret-key-for-jawir-garage-ecommerce";
 var WEBHOOK_SIGNATURE_KEY = process.env.WEBHOOK_SIGNATURE_KEY || "jawir-secret-signature-2026";
 var app = express();
 app.use(cors());
 app.use(express.json());
 app.use((req, res, next) => {
-  const orig = req.originalUrl || req.headers["x-matched-path"] || req.url || "";
+  const orig = req.originalUrl || req.headers["x-matched-path"] || req.headers["x-forwarded-uri"] || "";
   if (typeof orig === "string" && orig.startsWith("/api") && !req.url.startsWith("/api")) {
     req.url = orig;
+  } else if (!req.url.startsWith("/api") && !req.url.startsWith("/static")) {
+    req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
   }
   next();
 });
-app.get(["/api", "/api/health"], (req, res) => {
+app.get(["/api", "/api/health", "/api/db-status"], async (req, res) => {
+  const sbHealth = await checkSupabaseHealth();
   res.json({
     status: "ok",
     message: "Jawir Garage API is operational",
-    version: "1.0.0",
+    version: "1.5.0",
     nodeVersion: process.version,
+    isVercel: Boolean(process.env.VERCEL),
+    database: {
+      engine: db_default?.isInMemory ? "in-memory-resilient" : "sqlite-native",
+      supabase: sbHealth
+    },
     time: (/* @__PURE__ */ new Date()).toISOString()
   });
 });
@@ -1633,6 +1718,7 @@ app.get("/api/products", (req, res) => {
     ...p,
     specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs,
     variationGroups: typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups || "[]") : p.variationGroups || p.variation_groups || void 0,
+    bikeVariants: typeof p.bike_variants === "string" ? JSON.parse(p.bike_variants || "[]") : p.bikeVariants || void 0,
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility: getCompat.all(p.id).map((c) => c.bike_type)
@@ -1648,6 +1734,7 @@ app.get("/api/products/:slugOrId", (req, res) => {
     ...p,
     specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs,
     variationGroups: typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups || "[]") : p.variationGroups || p.variation_groups || void 0,
+    bikeVariants: typeof p.bike_variants === "string" ? JSON.parse(p.bike_variants || "[]") : p.bikeVariants || void 0,
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility
@@ -2413,6 +2500,7 @@ app.get("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
       ...p,
       specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs,
       variationGroups: typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups || "[]") : p.variationGroups || p.variation_groups || void 0,
+      bikeVariants: typeof p.bike_variants === "string" ? JSON.parse(p.bike_variants || "[]") : p.bikeVariants || void 0,
       isPromo: p.isPromo === 1,
       isPaketUpgrade: p.isPaketUpgrade === 1,
       isActive: p.is_active === 1,
@@ -2429,8 +2517,8 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
       INSERT INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
         discountPercent, promoTag, rating, soldCount, image, description, specs,
-        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, bike_variants, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       p.name,
@@ -2453,6 +2541,7 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
       p.weight_grams || 500,
       p.originCity || "Jakarta Timur",
       p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+      p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
       p.isActive !== false ? 1 : 0
     );
     if (p.bikeCompatibility && Array.isArray(p.bikeCompatibility)) {
@@ -2475,7 +2564,7 @@ app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) =
         name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
         price = ?, originalPrice = ?, discountPercent = ?, promoTag = ?,
         image = ?, description = ?, specs = ?, isPromo = ?, isPaketUpgrade = ?,
-        stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, is_active = ?
+        stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, bike_variants = ?, is_active = ?
       WHERE id = ?
     `).run(
       p.name,
@@ -2495,6 +2584,7 @@ app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) =
       p.weight_grams || 500,
       p.originCity || "Jakarta Timur",
       p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+      p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
       p.isActive !== false ? 1 : 0,
       id
     );
@@ -2576,14 +2666,14 @@ app.patch("/api/admin/vouchers/:id/toggle", authMiddleware, adminMiddleware, (re
   db_default.prepare("UPDATE vouchers SET is_active = ? WHERE id = ?").run(newStatus, id);
   res.json({ success: true, is_active: newStatus === 1 });
 });
-var distPath = path4.resolve(process.cwd(), "dist");
+var distPath = path5.resolve(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api")) {
       return next();
     }
-    res.sendFile(path4.join(distPath, "index.html"));
+    res.sendFile(path5.join(distPath, "index.html"));
   });
 }
 if (!process.env.VERCEL) {

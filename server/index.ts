@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import db, { initDb } from './db.ts';
-import { supabase, isSupabaseConfigured } from './supabase.ts';
+import { supabase, isSupabaseConfigured, checkSupabaseHealth } from './supabase.ts';
 import {
   createSnapTransaction,
   verifyMidtransSignature,
@@ -33,21 +33,29 @@ app.use(express.json());
 
 // Normalize URL for Vercel Serverless / reverse proxy rewrites
 app.use((req: any, res: any, next: NextFunction) => {
-  const orig = req.originalUrl || req.headers['x-matched-path'] || req.url || '';
+  const orig = req.originalUrl || req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || '';
   if (typeof orig === 'string' && orig.startsWith('/api') && !req.url.startsWith('/api')) {
     req.url = orig;
+  } else if (!req.url.startsWith('/api') && !req.url.startsWith('/static')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
   }
   next();
 });
 
-// API health check
-app.get(['/api', '/api/health'], (req: Request, res: Response) => {
+// API health & Database status check
+app.get(['/api', '/api/health', '/api/db-status'], async (req: Request, res: Response) => {
+  const sbHealth = await checkSupabaseHealth();
   res.json({
     status: 'ok',
     message: 'Jawir Garage API is operational',
-    version: '1.0.0',
+    version: '1.5.0',
     nodeVersion: process.version,
-    time: new Date().toISOString()
+    isVercel: Boolean(process.env.VERCEL),
+    database: {
+      engine: db?.isInMemory ? 'in-memory-resilient' : 'sqlite-native',
+      supabase: sbHealth,
+    },
+    time: new Date().toISOString(),
   });
 });
 
