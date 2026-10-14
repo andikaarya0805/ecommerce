@@ -217,12 +217,12 @@ export const LoginPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          login('demo-user-token', { id: 'u-demo', username: username || 'demo_user', role: 'user' });
+                          login('demo-user-token', { id: 'u-demo', username: username || 'agus', role: 'user' });
                           navigate(from, { replace: true });
                         }}
                         className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium transition-all cursor-pointer border border-neutral-700"
                       >
-                        Masuk Mode Demo (Member)
+                        Masuk Mode Demo ({username ? `@${username}` : 'Member'})
                       </button>
                     </div>
                   </div>
