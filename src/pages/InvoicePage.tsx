@@ -19,7 +19,13 @@ import {
   Package,
   ExternalLink,
   CreditCard,
-  Coins
+  Coins,
+  MapPin,
+  ChevronRight,
+  Store,
+  FileText,
+  BadgePercent,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const InvoicePage: React.FC = () => {
@@ -45,7 +51,7 @@ export const InvoicePage: React.FC = () => {
       const data = await res.json();
       setOrder(data);
     } catch (err: any) {
-      setError(err.message || 'Gagal mengambil detail tagihan');
+      setError(err.message || 'Gagal mengambil rincian pesanan');
     } finally {
       setLoading(false);
     }
@@ -105,7 +111,7 @@ export const InvoicePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [invoiceNumber]);
 
-  // Countdown timer calculation
+  // Countdown timer calculation for PENDING
   useEffect(() => {
     if (!order || order.status !== 'PENDING') return;
 
@@ -185,482 +191,593 @@ export const InvoicePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-carbon text-white flex flex-col items-center justify-center p-4">
-        <RefreshCw className="w-8 h-8 text-[#E50914] animate-spin mb-3" />
-        <p className="text-sm font-semibold text-neutral-300">Memuat rincian tagihan...</p>
+      <div className="min-h-screen bg-[#F5F5F5] flex flex-col items-center justify-center p-4">
+        <RefreshCw className="w-9 h-9 text-[#EE4D2D] animate-spin mb-3" />
+        <p className="text-sm font-semibold text-neutral-600">Memuat rincian pesanan...</p>
       </div>
     );
   }
 
   if (error || !order) {
     return (
-      <div className="min-h-screen bg-carbon text-white flex flex-col items-center justify-center p-4 text-center">
-        <AlertCircle className="w-12 h-12 text-red-500 mb-3" />
-        <h2 className="text-lg font-bold">Tagihan Tidak Ditemukan</h2>
-        <p className="text-xs text-neutral-400 max-w-sm mt-1 mb-4">
-          {error || 'Nomor invoice yang Anda masukkan salah atau belum terdaftar di sistem.'}
+      <div className="min-h-screen bg-[#F5F5F5] flex flex-col items-center justify-center p-4 text-center">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center text-red-500 mb-3">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-neutral-800">Pesanan Tidak Ditemukan</h2>
+        <p className="text-xs text-neutral-500 max-w-sm mt-1 mb-5">
+          {error || 'Nomor pesanan yang Anda tuju tidak terdaftar atau telah dihapus.'}
         </p>
         <button
-          onClick={() => navigate('/')}
-          className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-xs font-bold"
+          onClick={() => navigate('/orders')}
+          className="px-5 py-2.5 bg-[#EE4D2D] hover:bg-[#d73211] text-white rounded-md text-xs font-bold transition-all shadow-sm"
         >
-          Kembali ke Beranda
+          Lihat Pesanan Saya
         </button>
       </div>
     );
   }
 
-  const getStatusBadge = () => {
-    switch (order.status) {
-      case 'PENDING':
-        if (order.payment_method?.toLowerCase() === 'cod') {
-          return (
-            <span className="bg-amber-500/20 border border-amber-500 text-amber-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-              <Coins className="w-3.5 h-3.5" />
-              Menunggu Pengiriman (COD / Bayar di Tempat)
-            </span>
-          );
-        }
-        return (
-          <span className="bg-amber-500/20 border border-amber-500 text-amber-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" />
-            Menunggu Pembayaran
-          </span>
-        );
-      case 'PAID':
-        return (
-          <span className="bg-emerald-500/20 border border-emerald-500 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-            <CheckCircle className="w-3.5 h-3.5" />
-            Pembayaran Lunas (Sedang Dikemas)
-          </span>
-        );
-      case 'SHIPPED':
-        return (
-          <span className="bg-sky-500/20 border border-sky-500 text-sky-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-            <Truck className="w-3.5 h-3.5" />
-            Dalam Pengiriman
-          </span>
-        );
-      case 'COMPLETED':
-        return (
-          <span className="bg-purple-500/20 border border-purple-500 text-purple-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Pesanan Selesai
-          </span>
-        );
-      case 'CANCELLED':
-        return (
-          <span className="bg-red-500/20 border border-red-500 text-red-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-            <XCircle className="w-3.5 h-3.5" />
-            Pesanan Dibatalkan / Kedaluwarsa
-          </span>
-        );
+  const isCOD = order.payment_method?.toLowerCase() === 'cod';
+
+  // Stepper helper
+  const getStepStatus = (stepIndex: number) => {
+    // 0: Pesanan Dibuat
+    // 1: Pembayaran / Menunggu Pembayaran
+    // 2: Sedang Dikemas
+    // 3: Sedang Dikirim
+    // 4: Pesanan Selesai
+    if (order.status === 'CANCELLED') {
+      return stepIndex === 0 ? 'completed' : 'cancelled';
     }
+    if (order.status === 'PENDING') {
+      if (stepIndex === 0) return 'completed';
+      if (stepIndex === 1) return 'current';
+      return 'upcoming';
+    }
+    if (order.status === 'PAID') {
+      if (stepIndex <= 1) return 'completed';
+      if (stepIndex === 2) return 'current';
+      return 'upcoming';
+    }
+    if (order.status === 'SHIPPED') {
+      if (stepIndex <= 2) return 'completed';
+      if (stepIndex === 3) return 'current';
+      return 'upcoming';
+    }
+    if (order.status === 'COMPLETED') {
+      return 'completed';
+    }
+    return 'upcoming';
   };
 
+  const steps = [
+    { title: 'Pesanan Dibuat', time: new Date(order.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) },
+    {
+      title: isCOD ? 'COD Terverifikasi' : 'Pembayaran Terverifikasi',
+      time: order.status !== 'PENDING' ? 'Berhasil' : 'Menunggu',
+    },
+    { title: 'Sedang Dikemas', time: order.status === 'PAID' || order.status === 'SHIPPED' || order.status === 'COMPLETED' ? 'Diproses Toko' : '-' },
+    { title: 'Sedang Dikirim', time: order.tracking_number ? `${order.courier_name}` : '-' },
+    { title: 'Pesanan Selesai', time: order.status === 'COMPLETED' ? 'Selesai' : '-' },
+  ];
+
   return (
-    <div className="min-h-screen bg-carbon text-neutral-100 flex flex-col selection:bg-[#E50914] selection:text-white">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 bg-[#121212]/95 backdrop-blur-md border-b border-neutral-800">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-xs font-bold text-neutral-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Kembali Belanja</span>
-          </button>
+    <div className="min-h-screen bg-[#F5F5F5] text-neutral-800 flex flex-col font-sans selection:bg-[#EE4D2D] selection:text-white">
+      {/* 1. Shopee Top Bar Header */}
+      <header className="sticky top-0 z-40 bg-white border-b border-neutral-200 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-2 group">
+              <span className="font-racing font-black text-xl sm:text-2xl tracking-wider text-[#EE4D2D]">
+                JAWIR SPEEDSHOP
+              </span>
+            </Link>
+            <div className="h-5 w-[1px] bg-neutral-300 hidden sm:block" />
+            <h1 className="text-base font-bold text-neutral-800 hidden sm:block">
+              Rincian Pesanan
+            </h1>
+          </div>
 
-          <Link to="/" className="flex items-center gap-1.5">
-            <span className="font-racing font-extrabold text-base tracking-wider text-white uppercase">
-              JAWIR GARAGE
-            </span>
-            <span className="bg-[#E50914] text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-widest uppercase">
-              INVOICE
-            </span>
-          </Link>
-
-          <Link
-            to={`/track-order?invoice=${order.invoice_number}`}
-            className="text-xs text-[#E50914] font-bold hover:underline flex items-center gap-1"
-          >
-            <Truck className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Lacak Pesanan</span>
-          </Link>
+          <div className="flex items-center gap-3 text-xs font-medium">
+            <Link
+              to="/orders"
+              className="text-neutral-600 hover:text-[#EE4D2D] transition-colors hidden sm:inline"
+            >
+              Pesanan Saya
+            </Link>
+            <span className="text-neutral-300 hidden sm:inline">|</span>
+            <Link
+              to="/"
+              className="flex items-center gap-1 text-[#EE4D2D] font-bold hover:underline"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Kembali Belanja</span>
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 space-y-6">
-        {/* Status Card */}
-        <div className="bg-[#141414] border border-neutral-800 rounded-2xl p-5 sm:p-6 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
+      {/* Main Container */}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
+        {/* 2. Top Order Status Banner & Shopee Horizontal Stepper */}
+        <div className="bg-white rounded-lg border border-neutral-200 shadow-sm overflow-hidden">
+          {/* Status Header Banner */}
+          <div className="bg-gradient-to-r from-[#EE4D2D] to-[#FF5722] text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
-                Rincian Tagihan Pesanan
-              </span>
-              <div className="flex items-center gap-2 mt-1">
-                <h1 className="font-racing font-bold text-xl sm:text-2xl text-white tracking-wide">
-                  {order.invoice_number}
-                </h1>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-orange-100">
+                  No. Pesanan: {order.invoice_number}
+                </span>
                 <button
                   onClick={() => copyToClipboard(order.invoice_number, 'invoice')}
-                  className="p-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                  title="Salin Nomor Invoice"
+                  className="p-1 rounded bg-black/20 hover:bg-black/30 text-white transition-all"
+                  title="Salin No. Pesanan"
                 >
-                  {copiedInvoice ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedInvoice ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
                 </button>
               </div>
-              <span className="text-[11px] text-neutral-400">
-                Waktu Transaksi: {new Date(order.created_at).toLocaleString('id-ID')}
-              </span>
+
+              <h2 className="text-lg sm:text-xl font-bold mt-1">
+                {order.status === 'PENDING' && (isCOD ? 'Pesanan COD Menunggu Pengiriman' : 'Menunggu Pembayaran')}
+                {order.status === 'PAID' && 'Pembayaran Terkonfirmasi (Sedang Dikemas)'}
+                {order.status === 'SHIPPED' && 'Pesanan Sedang Dikirim'}
+                {order.status === 'COMPLETED' && 'Pesanan Selesai'}
+                {order.status === 'CANCELLED' && 'Pesanan Dibatalkan'}
+              </h2>
+
+              <p className="text-xs text-orange-100 mt-0.5">
+                {order.status === 'PENDING' && (isCOD
+                  ? 'Pesanan COD langsung diproses toko. Siapkan uang tunai pas saat kurir tiba.'
+                  : 'Selesaikan pembayaran sebelum batas waktu agar pesanan tidak dibatalkan.')}
+                {order.status === 'PAID' && 'Penjual sedang menyiapkan dan mengemas barang pesanan Anda.'}
+                {order.status === 'SHIPPED' && `Paket sedang diantar oleh kurir ${order.courier_name} (${order.courier_service}).`}
+                {order.status === 'COMPLETED' && 'Terima kasih telah berbelanja di Jawir Speedshop Official Store.'}
+                {order.status === 'CANCELLED' && 'Pesanan ini telah dibatalkan. Stok barang telah dikembalikan.'}
+              </p>
             </div>
 
-            <div className="flex flex-col items-start sm:items-end gap-1.5">
-              {getStatusBadge()}
-              {order.status === 'PENDING' && timeLeft && (
-                <div className="flex items-center gap-1.5 text-xs text-amber-400 font-mono">
-                  <span>Batas Bayar:</span>
-                  <strong className="text-sm font-bold bg-amber-950/60 border border-amber-800 px-2 py-0.5 rounded">
-                    {timeLeft}
-                  </strong>
+            {/* Countdown / Total badge */}
+            <div className="sm:text-right flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-white/20 pt-2 sm:pt-0">
+              <span className="text-[11px] text-orange-100">Total Tagihan</span>
+              <span className="text-xl sm:text-2xl font-black font-racing tracking-wide">
+                {formatIDR(order.grand_total)}
+              </span>
+              {order.status === 'PENDING' && !isCOD && timeLeft && (
+                <div className="flex items-center gap-1 text-[11px] font-mono bg-black/25 px-2 py-0.5 rounded mt-1">
+                  <Clock className="w-3 h-3 text-amber-300" />
+                  <span>Sisa Waktu: <strong>{timeLeft}</strong></span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Nomor Resi Banner (Jika sudah SHIPPED) */}
-          {order.tracking_number && (
-            <div className="mt-4 p-4 rounded-xl bg-sky-950/40 border border-sky-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-sky-900/60 border border-sky-700 flex items-center justify-center flex-shrink-0">
-                  <Package className="w-5 h-5 text-sky-300" />
-                </div>
-                <div>
-                  <span className="text-[10px] text-sky-400 uppercase tracking-wider font-bold">
-                    Paket Telah Dikirim ({order.courier_name} - {order.courier_service})
-                  </span>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-mono font-bold text-sm text-white">
-                      {order.tracking_number}
-                    </span>
-                    <button
-                      onClick={() => copyToClipboard(order.tracking_number!, 'resi')}
-                      className="p-1 rounded bg-sky-900/60 hover:bg-sky-800 text-sky-300 text-xs"
-                      title="Salin Resi"
+          {/* Shopee 5-Step Stepper */}
+          <div className="p-4 sm:p-6 bg-white border-b border-neutral-100">
+            <div className="relative flex items-center justify-between max-w-3xl mx-auto">
+              {/* Connecting Line */}
+              <div className="absolute left-6 right-6 top-4 sm:top-5 h-0.5 bg-neutral-200 -z-0" />
+
+              {steps.map((step, idx) => {
+                const status = getStepStatus(idx);
+                return (
+                  <div key={idx} className="relative z-10 flex flex-col items-center text-center">
+                    <div
+                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm transition-all ${
+                        status === 'completed'
+                          ? 'bg-[#EE4D2D] text-white shadow-sm ring-4 ring-orange-50'
+                          : status === 'current'
+                          ? 'bg-white border-2 border-[#EE4D2D] text-[#EE4D2D] shadow-sm ring-4 ring-orange-50'
+                          : status === 'cancelled'
+                          ? 'bg-neutral-200 text-neutral-400'
+                          : 'bg-white border-2 border-neutral-300 text-neutral-400'
+                      }`}
                     >
-                      {copiedResi ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
+                      {status === 'completed' ? (
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      ) : (
+                        <span>{idx + 1}</span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-[11px] sm:text-xs font-semibold mt-2 max-w-[70px] sm:max-w-[90px] leading-tight ${
+                        status === 'completed' || status === 'current'
+                          ? 'text-neutral-900'
+                          : 'text-neutral-400'
+                      }`}
+                    >
+                      {step.title}
+                    </span>
+                    <span className="text-[10px] text-neutral-400 mt-0.5 hidden sm:block">
+                      {step.time}
+                    </span>
                   </div>
-                </div>
-              </div>
-
-              <Link
-                to={`/track-order?invoice=${order.invoice_number}`}
-                className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs self-start sm:self-center"
-              >
-                Cek Pelacakan Real-Time →
-              </Link>
+                );
+              })}
             </div>
-          )}
-
-          {/* Payment Section for PENDING status */}
-          {order.status === 'PENDING' && (
-            order.payment_method?.toLowerCase() === 'cod' ? (
-              /* ================= COD (Bayar di Tempat) Section ================= */
-              <div className="mt-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-950/30 via-neutral-900 to-black border border-amber-500/40 space-y-5 shadow-xl">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center flex-shrink-0">
-                      <Coins className="w-6 h-6 text-amber-400" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-racing font-bold text-lg text-amber-400 tracking-wide">
-                          PESANAN COD (BAYAR DI TEMPAT)
-                        </h3>
-                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/40">
-                          Tanpa Transfer Online
-                        </span>
-                      </div>
-                      <p className="text-xs text-neutral-300 mt-1">
-                        Pesanan Anda telah kami terima dan langsung diproses toko. Anda <strong className="text-white">TIDAK perlu transfer ke bank/Midtrans</strong>.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-black/60 border border-amber-500/30 rounded-xl p-3 sm:text-right">
-                    <span className="text-[10px] text-neutral-400 uppercase tracking-wider block">
-                      Siapkan Uang Tunai Pas Saat Kurir Tiba
-                    </span>
-                    <span className="font-racing font-black text-xl text-amber-400">
-                      {formatIDR(order.grand_total)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-black/50 border border-neutral-800 space-y-2 text-xs">
-                  <div className="flex items-start gap-2 text-neutral-300">
-                    <span className="text-amber-400 font-bold">1.</span>
-                    <span>Kurir <strong>{order.courier_name} ({order.courier_service})</strong> akan mengantarkan pesanan ke alamat Anda: <strong>{order.shipping_address}</strong>.</span>
-                  </div>
-                  <div className="flex items-start gap-2 text-neutral-300">
-                    <span className="text-amber-400 font-bold">2.</span>
-                    <span>Serahkan uang tunai pas sebesar <strong>{formatIDR(order.grand_total)}</strong> langsung kepada kurir saat serah terima paket.</span>
-                  </div>
-                  <div className="flex items-start gap-2 text-neutral-300">
-                    <span className="text-amber-400 font-bold">3.</span>
-                    <span>Pastikan nomor telepon/WhatsApp <strong>{order.customer_phone}</strong> selalu aktif untuk mempermudah kurir menghubungi Anda.</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-1">
-                  <a
-                    href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Garage,%20saya%20konfirmasi%20pesanan%20COD%20Invoice%20${encodeURIComponent(
-                      order.invoice_number
-                    )}%20total%20${encodeURIComponent(formatIDR(order.grand_total))}.`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Konfirmasi Pesanan COD via WhatsApp Admin</span>
-                  </a>
-
-                  <button
-                    onClick={handleCancelOrder}
-                    disabled={isProcessingCancel}
-                    className="py-2.5 px-4 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan'}</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* ================= Non-COD (Midtrans Payment) Section ================= */
-              <div className="mt-6 p-5 rounded-xl bg-neutral-900/90 border border-neutral-800">
-                <h3 className="font-racing font-bold text-base text-white uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-[#E50914]" />
-                  Instruksi Pembayaran Instant (Midtrans)
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                  {/* QRIS / VA Display */}
-                  <div className="flex flex-col items-center bg-white text-black p-5 rounded-2xl border border-neutral-300 shadow-md">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 mb-2">
-                      {order.payment_method?.includes('va')
-                        ? 'Virtual Account Otomatis'
-                        : 'QRIS Standar Bank Indonesia'}
-                    </p>
-                    <div className="relative w-44 h-44 bg-neutral-100 border border-neutral-300 rounded-lg flex items-center justify-center">
-                      <QrCode className="w-36 h-36 text-neutral-900" />
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="bg-[#E50914] text-white text-[9px] font-black px-2 py-0.5 rounded shadow">
-                          JAWIR RACING
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-neutral-500 mt-2 text-center">
-                      Mendukung BCA Mobile, Mandiri, BRImo, BNI, GoPay, ShopeePay
-                    </span>
-                    <span className="font-racing font-black text-lg text-[#E50914] mt-1">
-                      {formatIDR(order.grand_total)}
-                    </span>
-                  </div>
-
-                  {/* Virtual Account & Midtrans Controls */}
-                  <div className="space-y-4">
-                    <div className="p-3.5 rounded-xl bg-black/60 border border-neutral-800">
-                      <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">
-                        Metode Dipilih: {order.payment_method?.toUpperCase()}
-                      </span>
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-bold text-base text-white tracking-widest">
-                          80777 {order.customer_phone.slice(-6).padStart(6, '0')}
-                        </span>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(
-                              `80777${order.customer_phone.slice(-6).padStart(6, '0')}`,
-                              'va'
-                            )
-                          }
-                          className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs font-bold text-neutral-200 flex items-center gap-1"
-                        >
-                          {copiedVA ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-400" />
-                              <span>Tersalin</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>Salin</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <span className="text-[10px] text-neutral-500 mt-1 block">
-                        Nama Rekening: Jawir Garage Speedshop
-                      </span>
-                    </div>
-
-                    {/* Midtrans Snap Interactive Payment */}
-                    <div className="p-3.5 rounded-xl bg-gradient-to-br from-neutral-900 to-blue-950/40 border border-blue-900/40 space-y-2">
-                      <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider block flex items-center gap-1.5">
-                        <CreditCard className="w-3.5 h-3.5 text-blue-400" />
-                        Midtrans Payment Gateway (Otomatis Sesuai Pilihan)
-                      </span>
-                      <button
-                        onClick={handleMidtransPay}
-                        className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-blue-950/50"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Buka Pembayaran Midtrans ({formatIDR(order.grand_total)})</span>
-                        <ExternalLink className="w-3.5 h-3.5 ml-1" />
-                      </button>
-                      <span className="text-[10px] text-neutral-400 block text-center">
-                        Membuka opsi pembayaran {order.payment_method?.toUpperCase()} di Midtrans
-                      </span>
-                    </div>
-
-                    {/* Simulator Testing Controls */}
-                    <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
-                      <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
-                        ⚡ Simulator Pembayaran (Pengujian PRD)
-                      </span>
-                      <button
-                        onClick={handleSimulatePayment}
-                        disabled={isProcessingPay}
-                        className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        <span>{isProcessingPay ? 'Memproses...' : 'Simulasikan Pembayaran Lunas'}</span>
-                      </button>
-                      <button
-                        onClick={handleCancelOrder}
-                        disabled={isProcessingCancel}
-                        className="w-full py-2 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                        <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan Ini'}</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          )}
+          </div>
         </div>
 
-        {/* Order Details & Snapshots */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Items Table */}
-          <div className="md:col-span-2 bg-[#141414] border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-4">
-            <h3 className="font-racing font-bold text-base text-white uppercase tracking-wider flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-[#E50914]" />
-              Daftar Barang ({order.items.reduce((s, i) => s + i.quantity, 0)})
-            </h3>
+        {/* 3. Shopee Iconic Envelope Delivery Address Card */}
+        <div className="bg-white rounded-lg border border-neutral-200 shadow-sm overflow-hidden">
+          {/* Top Airmail Colored Stripe (Shopee signature) */}
+          <div className="h-1.5 w-full bg-[repeating-linear-gradient(45deg,#EE4D2D_0,#EE4D2D_32px,#FFFFFF_32px,#FFFFFF_44px,#005BAA_44px,#005BAA_76px,#FFFFFF_76px,#FFFFFF_88px)]" />
 
-            <div className="space-y-3">
-              {order.items.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex-1">
-                    <h4 className="font-bold text-white line-clamp-1">{item.product_name_snapshot}</h4>
-                    <div className="text-[11px] text-neutral-400 mt-0.5">
-                      {item.quantity} x {formatIDR(item.price_snapshot)}
-                    </div>
-                  </div>
-                  <span className="font-racing font-bold text-sm text-neutral-100">
-                    {formatIDR(item.subtotal)}
-                  </span>
-                </div>
-              ))}
+          <div className="p-4 sm:p-5">
+            <div className="flex items-center gap-2 text-[#EE4D2D] font-bold text-sm sm:text-base pb-3 border-b border-neutral-100">
+              <MapPin className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span>Alamat Pengiriman</span>
             </div>
 
-            {/* Price Breakdown */}
-            <div className="pt-3 border-t border-neutral-800 space-y-1.5 text-xs text-neutral-400">
-              <div className="flex justify-between">
-                <span>Subtotal Barang:</span>
-                <span className="text-neutral-200">{formatIDR(order.subtotal_amount)}</span>
-              </div>
-              {order.discount_amount > 0 && (
-                <div className="flex justify-between text-emerald-400 font-medium">
-                  <span>Diskon Voucer ({order.voucher_code}):</span>
-                  <span>-{formatIDR(order.discount_amount)}</span>
+            <div className="pt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="md:col-span-2 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-neutral-900">{order.customer_name}</span>
+                  <span className="text-neutral-500 font-mono">({order.customer_phone})</span>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span>Ongkos Kirim ({order.courier_name} - {order.courier_service}):</span>
-                <span className="text-neutral-200">{formatIDR(order.shipping_cost)}</span>
-              </div>
-              <div className="flex justify-between text-sm font-bold text-white pt-2 border-t border-neutral-800">
-                <span>Total Tagihan:</span>
-                <span className="font-racing text-lg text-[#E50914]">
-                  {formatIDR(order.grand_total)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Recipient & Shipping Information */}
-          <div className="bg-[#141414] border border-neutral-800 rounded-2xl p-5 shadow-xl space-y-4">
-            <h3 className="font-racing font-bold text-base text-white uppercase tracking-wider flex items-center gap-2">
-              <Truck className="w-4 h-4 text-[#E50914]" />
-              Data Pengiriman
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold block">
-                  Penerima
-                </span>
-                <p className="font-bold text-white mt-0.5">{order.customer_name}</p>
-                <p className="text-neutral-400">{order.customer_phone}</p>
-                {order.customer_email && (
-                  <p className="text-neutral-500 text-[11px]">{order.customer_email}</p>
-                )}
-              </div>
-
-              <div>
-                <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold block">
-                  Alamat Lengkap
-                </span>
-                <p className="text-neutral-300 mt-0.5 leading-relaxed">{order.shipping_address}</p>
+                <p className="text-neutral-700 leading-relaxed">{order.shipping_address}</p>
                 {(order.shipping_district || order.shipping_city) && (
-                  <p className="text-neutral-400 text-[11px] mt-0.5">
+                  <p className="text-neutral-500">
                     {order.shipping_district}, {order.shipping_city}, {order.shipping_province}
                   </p>
                 )}
               </div>
 
-              <div>
-                <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold block">
-                  Metode Pengiriman
-                </span>
-                <p className="font-bold text-white mt-0.5">
-                  {order.courier_name} ({order.courier_service})
-                </p>
-              </div>
+              {/* Courier info box */}
+              <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200/80 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5 text-neutral-500 text-[11px] font-bold uppercase tracking-wider">
+                    <Truck className="w-3.5 h-3.5 text-[#EE4D2D]" />
+                    <span>Opsi Pengiriman</span>
+                  </div>
+                  <p className="font-bold text-neutral-800 text-xs mt-1">
+                    {order.courier_name} - {order.courier_service}
+                  </p>
+                  {order.tracking_number ? (
+                    <div className="mt-1.5">
+                      <span className="text-[10px] text-neutral-500 block">No. Resi Biteship:</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="font-mono font-bold text-xs text-neutral-900 bg-white px-1.5 py-0.5 rounded border border-neutral-300">
+                          {order.tracking_number}
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(order.tracking_number!, 'resi')}
+                          className="p-1 rounded bg-neutral-200 hover:bg-neutral-300 text-neutral-700"
+                          title="Salin Resi"
+                        >
+                          {copiedResi ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-amber-600 font-medium mt-1 block">
+                      Resi otomatis terbit saat toko serahkan paket ke kurir
+                    </span>
+                  )}
+                </div>
 
-              <div className="pt-3 border-t border-neutral-800">
-                <a
-                  href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Garage,%20saya%20sudah%20membuat%20pesanan%20dengan%20Invoice%20${encodeURIComponent(
-                    order.invoice_number
-                  )}%20total%20${encodeURIComponent(formatIDR(order.grand_total))}.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                <Link
+                  to={`/track-order?invoice=${order.invoice_number}`}
+                  className="mt-3 text-center py-1.5 px-3 rounded bg-white hover:bg-neutral-100 border border-neutral-300 text-[#EE4D2D] font-bold text-[11px] transition-colors"
                 >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>Konfirmasi via WhatsApp</span>
-                </a>
+                  Lacak Pengiriman Real-Time →
+                </Link>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* 4. Payment Action Box for PENDING */}
+        {order.status === 'PENDING' && (
+          isCOD ? (
+            /* ================= COD (Bayar di Tempat) Shopee Card ================= */
+            <div className="bg-white rounded-lg border-2 border-amber-400 p-4 sm:p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                    <Coins className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-neutral-900 flex items-center gap-2">
+                      COD (Bayar di Tempat)
+                      <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        Tanpa Transfer Bank
+                      </span>
+                    </h3>
+                    <p className="text-xs text-neutral-600">
+                      Pesanan Anda langsung diproses toko tanpa perlu transfer Midtrans.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="sm:text-right bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                  <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Siapkan Uang Pas Saat Kurir Tiba:</span>
+                  <span className="font-racing font-black text-xl text-[#EE4D2D]">
+                    {formatIDR(order.grand_total)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50/60 rounded-lg text-xs space-y-1.5 text-neutral-700">
+                <p>• Kurir <strong>{order.courier_name} ({order.courier_service})</strong> akan mengantarkan paket ke alamat Anda.</p>
+                <p>• Mohon siapkan uang tunai pas sebesar <strong>{formatIDR(order.grand_total)}</strong> saat serah terima paket.</p>
+                <p>• Pastikan nomor telepon <strong>{order.customer_phone}</strong> aktif untuk koordinasi dengan kurir.</p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                <a
+                  href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Speedshop,%20saya%20konfirmasi%20pesanan%20COD%20No.%20Pesanan%20${encodeURIComponent(order.invoice_number)}%20total%20${encodeURIComponent(formatIDR(order.grand_total))}.`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:flex-1 py-2.5 px-4 rounded bg-[#25D366] hover:bg-[#1EBE5D] text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Konfirmasi Pesanan COD ke WhatsApp Admin</span>
+                </a>
+
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={isProcessingCancel}
+                  className="w-full sm:w-auto py-2.5 px-4 rounded bg-white hover:bg-neutral-50 border border-neutral-300 text-neutral-600 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <XCircle className="w-3.5 h-3.5 text-red-500" />
+                  <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan'}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ================= Non-COD (Midtrans Payment) Shopee Card ================= */
+            <div className="bg-white rounded-lg border-2 border-[#EE4D2D] p-4 sm:p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-[#EE4D2D] flex-shrink-0">
+                    <CreditCard className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-neutral-900 flex items-center gap-2">
+                      Instruksi Pembayaran Instan
+                      <span className="bg-orange-100 text-[#EE4D2D] text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                        {order.payment_method?.toUpperCase()}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-neutral-600">
+                      Klik tombol bayar untuk menyelesaikan transaksi dengan Midtrans Payment Gateway.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  id="shopee-pay-now-btn"
+                  onClick={handleMidtransPay}
+                  className="py-3 px-6 rounded-md bg-[#EE4D2D] hover:bg-[#d73211] active:scale-95 text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-orange-500/20"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Bayar Sekarang ({formatIDR(order.grand_total)})</span>
+                </button>
+              </div>
+
+              {/* VA & QRIS display details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-1">
+                <div className="p-3.5 rounded-lg bg-neutral-50 border border-neutral-200">
+                  <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider block mb-1">
+                    Nomor Rekening / Virtual Account ({order.payment_method?.toUpperCase()}):
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-base text-neutral-900 tracking-wider">
+                      80777 {order.customer_phone.slice(-6).padStart(6, '0')}
+                    </span>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(
+                          `80777${order.customer_phone.slice(-6).padStart(6, '0')}`,
+                          'va'
+                        )
+                      }
+                      className="px-2.5 py-1 rounded bg-white hover:bg-neutral-100 border border-neutral-300 text-xs font-bold text-neutral-700 flex items-center gap-1"
+                    >
+                      {copiedVA ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>Tersalin</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Salin</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-neutral-500 mt-1 block">
+                    Atas Nama: Jawir Speedshop Official Midtrans
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between p-3.5 rounded-lg bg-neutral-50 border border-neutral-200">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider block">
+                      ⚡ Uji Coba Cepat (Simulator PRD)
+                    </span>
+                    <span className="text-[11px] text-neutral-500 block">
+                      Simulasikan status pembayaran lunas seketika
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleSimulatePayment}
+                    disabled={isProcessingPay}
+                    className="py-2 px-3 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all cursor-pointer"
+                  >
+                    {isProcessingPay ? 'Memproses...' : 'Simulasi Lunas'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={isProcessingCancel}
+                  className="text-xs text-neutral-500 hover:text-red-600 flex items-center gap-1 transition-colors"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan Ini'}</span>
+                </button>
+              </div>
+            </div>
+          )
+        )}
+
+        {/* 5. Shopee Store & Products Ordered Card */}
+        <div className="bg-white rounded-lg border border-neutral-200 shadow-sm overflow-hidden">
+          {/* Store Header */}
+          <div className="p-4 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#EE4D2D] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                Mall
+              </span>
+              <Store className="w-4 h-4 text-neutral-700" />
+              <span className="font-bold text-sm text-neutral-900">
+                Jawir Speedshop Official Store
+              </span>
+            </div>
+
+            <a
+              href="https://wa.me/6281234567890"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-[#EE4D2D] font-bold hover:underline flex items-center gap-1"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>Chat Penjual</span>
+            </a>
+          </div>
+
+          {/* Product Items */}
+          <div className="divide-y divide-neutral-100">
+            {order.items.map((item) => (
+              <div key={item.id} className="p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-neutral-100 rounded-md border border-neutral-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    <img
+                      src="/images/brt_super_roller_1789096443716.jpg"
+                      alt={item.product_name_snapshot}
+                      className="w-full h-full object-cover"
+                      onError={(e: any) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  </div>
+
+                  <div className="min-w-0 space-y-1">
+                    <h4 className="text-sm font-semibold text-neutral-900 line-clamp-1">
+                      {item.product_name_snapshot}
+                    </h4>
+                    <span className="inline-block text-[11px] text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+                      Variasi: Original PnP Spec
+                    </span>
+                    <div className="text-xs text-neutral-500">
+                      x{item.quantity}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right flex-shrink-0">
+                  <span className="text-sm font-bold text-[#EE4D2D]">
+                    {formatIDR(item.subtotal)}
+                  </span>
+                  <div className="text-[11px] text-neutral-400">
+                    @{formatIDR(item.price_snapshot)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Delivery Guarantee Banner */}
+          <div className="p-3 bg-neutral-50/70 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-600">
+            <div className="flex items-center gap-1.5">
+              <Truck className="w-4 h-4 text-emerald-600" />
+              <span>Garansi Tiba didukung oleh <strong>Biteship Logistics Hub</strong></span>
+            </div>
+            <span className="text-[11px] text-neutral-500 font-medium">Pengiriman Reguler</span>
+          </div>
+        </div>
+
+        {/* 6. Shopee Payment & Billing Details */}
+        <div className="bg-white rounded-lg border border-neutral-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-neutral-100 flex items-center gap-2 text-sm font-bold text-neutral-800">
+            <FileText className="w-4 h-4 text-[#EE4D2D]" />
+            <span>Rincian Pembayaran</span>
+          </div>
+
+          <div className="p-4 sm:p-5 space-y-3 text-xs">
+            <div className="flex justify-between items-center pb-2 border-b border-neutral-100">
+              <span className="text-neutral-500">Metode Pembayaran:</span>
+              <span className="font-bold text-neutral-800 uppercase">
+                {isCOD ? 'COD (Bayar di Tempat)' : order.payment_method?.toUpperCase()}
+              </span>
+            </div>
+
+            <div className="flex justify-between text-neutral-600">
+              <span>Subtotal untuk Produk:</span>
+              <span className="font-semibold text-neutral-900">{formatIDR(order.subtotal_amount)}</span>
+            </div>
+
+            <div className="flex justify-between text-neutral-600">
+              <span>Total Ongkos Kirim ({order.courier_name} - {order.courier_service}):</span>
+              <span className="font-semibold text-neutral-900">{formatIDR(order.shipping_cost)}</span>
+            </div>
+
+            {order.discount_amount > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span className="flex items-center gap-1">
+                  <BadgePercent className="w-3.5 h-3.5" />
+                  Diskon Voucher Toko ({order.voucher_code}):
+                </span>
+                <span>-{formatIDR(order.discount_amount)}</span>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-neutral-200 flex justify-between items-baseline">
+              <div>
+                <span className="text-sm font-bold text-neutral-900 block">Total Pembayaran:</span>
+                <span className="text-[10px] text-neutral-500">Termasuk PPN & Biaya Penanganan</span>
+              </div>
+              <span className="font-racing font-black text-2xl text-[#EE4D2D]">
+                {formatIDR(order.grand_total)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 7. Bottom Navigation & Action Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <Link
+            to="/orders"
+            className="w-full sm:w-auto py-2.5 px-5 rounded-md bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-700 font-bold text-xs text-center transition-colors"
+          >
+            ← Kembali ke Pesanan Saya
+          </Link>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {order.status === 'COMPLETED' && (
+              <button
+                onClick={() => navigate('/')}
+                className="flex-1 sm:flex-initial py-2.5 px-5 rounded-md bg-[#EE4D2D] hover:bg-[#d73211] text-white font-bold text-xs transition-all shadow-sm"
+              >
+                Beli Lagi
+              </button>
+            )}
+            <a
+              href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Speedshop,%20saya%20ingin%20tanya%20mengenai%20pesanan%20No.%20${encodeURIComponent(
+                order.invoice_number
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-initial py-2.5 px-5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Bantuan WhatsApp</span>
+            </a>
           </div>
         </div>
       </main>

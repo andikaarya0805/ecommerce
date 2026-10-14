@@ -733,31 +733,45 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </div>
               </div>
 
-              {user ? (
+              <div className="flex flex-col gap-2">
                 <button
-                  id="cart-checkout-btn"
+                  id="view-full-cart-btn"
                   onClick={() => {
                     onClose();
-                    navigate('/checkout');
+                    navigate('/cart');
                   }}
-                  className="w-full py-3 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-sm shadow-lg shadow-red-950/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  className="w-full py-2.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all border border-neutral-700"
                 >
-                  <span>Lanjut Checkout ({formatIDR(grandTotal)})</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ShoppingBag className="w-3.5 h-3.5 text-[#EE4D2D]" />
+                  <span>Buka Keranjang Shopee (Lihat Semua)</span>
                 </button>
-              ) : (
-                <button
-                  id="cart-login-checkout-btn"
-                  onClick={() => {
-                    onClose();
-                    navigate('/login?redirect=/checkout');
-                  }}
-                  className="w-full py-3 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-sm shadow-lg shadow-red-950/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
-                >
-                  <span>Login untuk Checkout ({formatIDR(grandTotal)})</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              )}
+
+                {user ? (
+                  <button
+                    id="cart-checkout-btn"
+                    onClick={() => {
+                      onClose();
+                      navigate('/checkout');
+                    }}
+                    className="w-full py-3 rounded-lg bg-[#EE4D2D] hover:bg-[#d73211] active:scale-95 text-white font-bold text-sm shadow-md shadow-orange-950/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  >
+                    <span>Lanjut Checkout ({formatIDR(grandTotal)})</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    id="cart-login-checkout-btn"
+                    onClick={() => {
+                      onClose();
+                      navigate('/login?redirect=/checkout');
+                    }}
+                    className="w-full py-3 rounded-lg bg-[#EE4D2D] hover:bg-[#d73211] active:scale-95 text-white font-bold text-sm shadow-md shadow-orange-950/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  >
+                    <span>Login untuk Checkout ({formatIDR(grandTotal)})</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
