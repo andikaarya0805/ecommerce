@@ -1,0 +1,8 @@
+{
+  "name": "JAWIR GARAGE Speedshop",
+  "description": "Mobile-first D2C e-commerce speedshop for motorcycle racing parts, CVT upgrade kits, and performance accessories by Jawir Garage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
