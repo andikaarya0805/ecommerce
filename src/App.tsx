@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, Voucher, CartItem, UserBike, BikeType, MainTabType, SortOption } from './types';
 import { CategoryItem } from './components/VerticalCategoryList';
+import { INITIAL_PRODUCTS, CATEGORY_ITEMS } from './data/products';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { Header } from './components/Header';
 import { HeroBannerCarousel } from './components/HeroBannerCarousel';
@@ -21,53 +22,68 @@ import { LoginPage } from './pages/LoginPage';
 import { AdminPanel } from './pages/AdminPanel';
 import { InvoicePage } from './pages/InvoicePage';
 import { TrackOrderPage } from './pages/TrackOrderPage';
+import { CheckoutPage } from './pages/CheckoutPage';
+import { CartPage } from './pages/CartPage';
+import { OrderHistoryPage } from './pages/OrderHistoryPage';
+import { useCart } from './context/CartContext';
 
 function StoreFront() {
+  // Global cart & voucher state from context
+  const {
+    items: cartItems,
+    addToCart,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    appliedVoucher,
+    setAppliedVoucher,
+  } = useCart();
+
   // State variables
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<MainTabType>('semua');
   const [selectedBikeType, setSelectedBikeType] = useState<BikeType>('all');
   const [sortOption, setSortOption] = useState<SortOption>('populer');
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [appliedVoucher, setAppliedVoucher] = useState<Voucher | null>(null);
   
   const [userBike, setUserBike] = useState<UserBike | null>(null);
   
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  // Initialize with INITIAL_PRODUCTS so user dashboard products render immediately on load
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [categories, setCategories] = useState<CategoryItem[]>(CATEGORY_ITEMS);
   const [bikes, setBikes] = useState<UserBike[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const fetchAllData = () => {
-    return Promise.all([
-      fetch('/api/products').then(res => res.json()),
-      fetch('/api/vouchers').then(res => res.json()),
-      fetch('/api/categories').then(res => res.json()),
-      fetch('/api/bikes').then(res => res.json())
-    ]).then(([productsData, vouchersData, categoriesData, bikesData]) => {
-      setProducts(productsData);
-      setVouchers(vouchersData);
-      setCategories(categoriesData);
-      setBikes(bikesData);
-      return { productsData, bikesData };
-    });
+  const fetchAllData = async () => {
+    try {
+      const [resProd, resVouch, resCat, resBikes] = await Promise.allSettled([
+        fetch('/api/products').then((r) => r.json()),
+        fetch('/api/vouchers').then((r) => r.json()),
+        fetch('/api/categories').then((r) => r.json()),
+        fetch('/api/bikes').then((r) => r.json()),
+      ]);
+
+      if (resProd.status === 'fulfilled' && Array.isArray(resProd.value)) {
+        setProducts(resProd.value);
+      }
+      if (resVouch.status === 'fulfilled' && Array.isArray(resVouch.value)) {
+        setVouchers(resVouch.value);
+      }
+      if (resCat.status === 'fulfilled' && Array.isArray(resCat.value)) {
+        setCategories(resCat.value);
+      }
+      if (resBikes.status === 'fulfilled' && Array.isArray(resBikes.value)) {
+        setBikes(resBikes.value);
+      }
+    } catch (e) {
+      console.error('Fetch error:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchAllData()
-    .then(({ productsData, bikesData }) => {
-      if (productsData.length > 0 && cartItems.length === 0) {
-         setCartItems([{ product: productsData[0], quantity: 1 }]);
-      }
-      if (bikesData.length > 0 && !userBike) {
-         setUserBike(bikesData[0]);
-      }
-      setIsLoading(false);
-    }).catch(err => {
-      console.error(err);
-      setIsLoading(false);
-    });
+    fetchAllData();
   }, []);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
 
@@ -93,41 +109,21 @@ function StoreFront() {
   // Cart Handlers
   const handleAddToCart = (product: Product, e?: React.MouseEvent, quantity = 1) => {
     if (e) e.stopPropagation();
-    setCartItems((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
-        );
-      }
-      return [...prev, { product, quantity }];
-    });
+    addToCart(product, quantity);
     addToast('Ditambahkan ke Keranjang', `${product.name.slice(0, 38)}...`);
   };
 
   const handleUpdateCartQuantity = (productId: string, delta: number) => {
-    setCartItems((prev) =>
-      prev
-        .map((item) => {
-          if (item.product.id === productId) {
-            const newQty = item.quantity + delta;
-            return newQty > 0 ? { ...item, quantity: newQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean) as CartItem[]
-    );
+    updateQuantity(productId, delta);
   };
 
   const handleRemoveCartItem = (productId: string) => {
-    setCartItems((prev) => prev.filter((item) => item.product.id !== productId));
+    removeItem(productId);
     addToast('Item Dihapus', 'Produk dikeluarkan dari keranjang belanja.');
   };
 
   const handleClearCart = () => {
-    setCartItems([]);
+    clearCart();
   };
 
   // Voucher Handlers
@@ -183,7 +179,7 @@ function StoreFront() {
     // Bike type sub-bar filtering
     if (selectedBikeType !== 'all') {
       list = list.filter((p) =>
-        p.bikeCompatibility.includes(selectedBikeType)
+        Array.isArray(p.bikeCompatibility) && p.bikeCompatibility.includes(selectedBikeType)
       );
     }
 
@@ -192,11 +188,11 @@ function StoreFront() {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.compatibilityText.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          p.fitmentTag.toLowerCase().includes(q)
+          p.name?.toLowerCase().includes(q) ||
+          p.compatibilityText?.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q) ||
+          p.fitmentTag?.toLowerCase().includes(q)
       );
     }
 
@@ -212,7 +208,7 @@ function StoreFront() {
     }
 
     return list;
-  }, [activeTab, selectedBikeType, searchQuery, sortOption]);
+  }, [products, activeTab, selectedBikeType, searchQuery, sortOption]);
 
   const totalCartCount = cartItems.reduce((s, i) => s + i.quantity, 0);
 
@@ -348,6 +344,10 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<StoreFront />} />
+      <Route path="/cart" element={<CartPage />} />
+      <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/orders" element={<OrderHistoryPage />} />
+      <Route path="/my-orders" element={<OrderHistoryPage />} />
       <Route path="/orders/:invoiceNumber" element={<InvoicePage />} />
       <Route path="/track-order" element={<TrackOrderPage />} />
       <Route path="/login" element={<LoginPage />} />

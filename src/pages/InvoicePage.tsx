@@ -16,7 +16,10 @@ import {
   MessageCircle,
   RefreshCw,
   ShoppingBag,
-  Package
+  Package,
+  ExternalLink,
+  CreditCard,
+  Coins
 } from 'lucide-react';
 
 export const InvoicePage: React.FC = () => {
@@ -45,6 +48,54 @@ export const InvoicePage: React.FC = () => {
       setError(err.message || 'Gagal mengambil detail tagihan');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load Midtrans Snap Script
+  useEffect(() => {
+    fetch('/api/payment/config')
+      .then((res) => res.json())
+      .then((cfg) => {
+        if (cfg.midtransClientKey) {
+          const scriptId = 'midtrans-snap-script';
+          if (!document.getElementById(scriptId)) {
+            const script = document.createElement('script');
+            script.id = scriptId;
+            script.src = cfg.isProduction
+              ? 'https://app.midtrans.com/snap/snap.js'
+              : 'https://app.sandbox.midtrans.com/snap/snap.js';
+            script.setAttribute('data-client-key', cfg.midtransClientKey);
+            document.body.appendChild(script);
+          }
+        }
+      })
+      .catch((e) => console.log('Payment config load:', e));
+  }, []);
+
+  const handleMidtransPay = () => {
+    if (!order) return;
+    if ((window as any).snap && order.snap_token) {
+      (window as any).snap.pay(order.snap_token, {
+        onSuccess: (result: any) => {
+          console.log('[Snap Success]', result);
+          fetchOrder();
+        },
+        onPending: (result: any) => {
+          console.log('[Snap Pending]', result);
+          fetchOrder();
+        },
+        onError: (err: any) => {
+          console.error('[Snap Error]', err);
+          alert('Pembayaran gagal atau dibatalkan.');
+        },
+        onClose: () => {
+          fetchOrder();
+        },
+      });
+    } else if (order.payment_url) {
+      window.open(order.payment_url, '_blank');
+    } else {
+      alert('Snap token sedang disiapkan atau kredensial Midtrans di .env belum diatur.');
     }
   };
 
@@ -162,6 +213,14 @@ export const InvoicePage: React.FC = () => {
   const getStatusBadge = () => {
     switch (order.status) {
       case 'PENDING':
+        if (order.payment_method?.toLowerCase() === 'cod') {
+          return (
+            <span className="bg-amber-500/20 border border-amber-500 text-amber-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+              <Coins className="w-3.5 h-3.5" />
+              Menunggu Pengiriman (COD / Bayar di Tempat)
+            </span>
+          );
+        }
         return (
           <span className="bg-amber-500/20 border border-amber-500 text-amber-300 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
@@ -307,96 +366,191 @@ export const InvoicePage: React.FC = () => {
 
           {/* Payment Section for PENDING status */}
           {order.status === 'PENDING' && (
-            <div className="mt-6 p-5 rounded-xl bg-neutral-900/90 border border-neutral-800">
-              <h3 className="font-racing font-bold text-base text-white uppercase tracking-wider mb-3 flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-[#E50914]" />
-                Instruksi Pembayaran Instant
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                {/* QRIS / VA Display */}
-                <div className="flex flex-col items-center bg-white text-black p-5 rounded-2xl border border-neutral-300 shadow-md">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 mb-2">
-                    QRIS Standar Bank Indonesia
-                  </p>
-                  <div className="relative w-44 h-44 bg-neutral-100 border border-neutral-300 rounded-lg flex items-center justify-center">
-                    <QrCode className="w-36 h-36 text-neutral-900" />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="bg-[#E50914] text-white text-[9px] font-black px-2 py-0.5 rounded shadow">
-                        JAWIR RACING
+            order.payment_method?.toLowerCase() === 'cod' ? (
+              /* ================= COD (Bayar di Tempat) Section ================= */
+              <div className="mt-6 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-950/30 via-neutral-900 to-black border border-amber-500/40 space-y-5 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center flex-shrink-0">
+                      <Coins className="w-6 h-6 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-racing font-bold text-lg text-amber-400 tracking-wide">
+                          PESANAN COD (BAYAR DI TEMPAT)
+                        </h3>
+                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/40">
+                          Tanpa Transfer Online
+                        </span>
                       </div>
+                      <p className="text-xs text-neutral-300 mt-1">
+                        Pesanan Anda telah kami terima dan langsung diproses toko. Anda <strong className="text-white">TIDAK perlu transfer ke bank/Midtrans</strong>.
+                      </p>
                     </div>
                   </div>
-                  <span className="text-[10px] text-neutral-500 mt-2">
-                    Scan via BCA Mobile, GoPay, ShopeePay, OVO, Dana
-                  </span>
-                  <span className="font-racing font-black text-lg text-[#E50914] mt-1">
-                    {formatIDR(order.grand_total)}
-                  </span>
+
+                  <div className="bg-black/60 border border-amber-500/30 rounded-xl p-3 sm:text-right">
+                    <span className="text-[10px] text-neutral-400 uppercase tracking-wider block">
+                      Siapkan Uang Tunai Pas Saat Kurir Tiba
+                    </span>
+                    <span className="font-racing font-black text-xl text-amber-400">
+                      {formatIDR(order.grand_total)}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Virtual Account & Testing Controls */}
-                <div className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-black/60 border border-neutral-800">
-                    <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">
-                      BCA Virtual Account
-                    </span>
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-base text-white tracking-widest">
-                        80777 {order.customer_phone.slice(-6).padStart(6, '0')}
-                      </span>
-                      <button
-                        onClick={() =>
-                          copyToClipboard(
-                            `80777${order.customer_phone.slice(-6).padStart(6, '0')}`,
-                            'va'
-                          )
-                        }
-                        className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs font-bold text-neutral-200 flex items-center gap-1"
-                      >
-                        {copiedVA ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span>Tersalin</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Salin</span>
-                          </>
-                        )}
-                      </button>
+                <div className="p-4 rounded-xl bg-black/50 border border-neutral-800 space-y-2 text-xs">
+                  <div className="flex items-start gap-2 text-neutral-300">
+                    <span className="text-amber-400 font-bold">1.</span>
+                    <span>Kurir <strong>{order.courier_name} ({order.courier_service})</strong> akan mengantarkan pesanan ke alamat Anda: <strong>{order.shipping_address}</strong>.</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-neutral-300">
+                    <span className="text-amber-400 font-bold">2.</span>
+                    <span>Serahkan uang tunai pas sebesar <strong>{formatIDR(order.grand_total)}</strong> langsung kepada kurir saat serah terima paket.</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-neutral-300">
+                    <span className="text-amber-400 font-bold">3.</span>
+                    <span>Pastikan nomor telepon/WhatsApp <strong>{order.customer_phone}</strong> selalu aktif untuk mempermudah kurir menghubungi Anda.</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                  <a
+                    href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Garage,%20saya%20konfirmasi%20pesanan%20COD%20Invoice%20${encodeURIComponent(
+                      order.invoice_number
+                    )}%20total%20${encodeURIComponent(formatIDR(order.grand_total))}.`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Konfirmasi Pesanan COD via WhatsApp Admin</span>
+                  </a>
+
+                  <button
+                    onClick={handleCancelOrder}
+                    disabled={isProcessingCancel}
+                    className="py-2.5 px-4 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ================= Non-COD (Midtrans Payment) Section ================= */
+              <div className="mt-6 p-5 rounded-xl bg-neutral-900/90 border border-neutral-800">
+                <h3 className="font-racing font-bold text-base text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#E50914]" />
+                  Instruksi Pembayaran Instant (Midtrans)
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                  {/* QRIS / VA Display */}
+                  <div className="flex flex-col items-center bg-white text-black p-5 rounded-2xl border border-neutral-300 shadow-md">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 mb-2">
+                      {order.payment_method?.includes('va')
+                        ? 'Virtual Account Otomatis'
+                        : 'QRIS Standar Bank Indonesia'}
+                    </p>
+                    <div className="relative w-44 h-44 bg-neutral-100 border border-neutral-300 rounded-lg flex items-center justify-center">
+                      <QrCode className="w-36 h-36 text-neutral-900" />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="bg-[#E50914] text-white text-[9px] font-black px-2 py-0.5 rounded shadow">
+                          JAWIR RACING
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-[10px] text-neutral-500 mt-1 block">
-                      Nama Rekening: Jawir Garage Speedshop
+                    <span className="text-[10px] text-neutral-500 mt-2 text-center">
+                      Mendukung BCA Mobile, Mandiri, BRImo, BNI, GoPay, ShopeePay
+                    </span>
+                    <span className="font-racing font-black text-lg text-[#E50914] mt-1">
+                      {formatIDR(order.grand_total)}
                     </span>
                   </div>
 
-                  {/* Simulator Testing Controls */}
-                  <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
-                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
-                      ⚡ Simulator Pembayaran (Pengujian PRD)
-                    </span>
-                    <button
-                      onClick={handleSimulatePayment}
-                      disabled={isProcessingPay}
-                      className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>{isProcessingPay ? 'Memproses...' : 'Simulasikan Pembayaran Lunas'}</span>
-                    </button>
-                    <button
-                      onClick={handleCancelOrder}
-                      disabled={isProcessingCancel}
-                      className="w-full py-2 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan Ini'}</span>
-                    </button>
+                  {/* Virtual Account & Midtrans Controls */}
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl bg-black/60 border border-neutral-800">
+                      <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">
+                        Metode Dipilih: {order.payment_method?.toUpperCase()}
+                      </span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-base text-white tracking-widest">
+                          80777 {order.customer_phone.slice(-6).padStart(6, '0')}
+                        </span>
+                        <button
+                          onClick={() =>
+                            copyToClipboard(
+                              `80777${order.customer_phone.slice(-6).padStart(6, '0')}`,
+                              'va'
+                            )
+                          }
+                          className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-xs font-bold text-neutral-200 flex items-center gap-1"
+                        >
+                          {copiedVA ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span>Tersalin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Salin</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-neutral-500 mt-1 block">
+                        Nama Rekening: Jawir Garage Speedshop
+                      </span>
+                    </div>
+
+                    {/* Midtrans Snap Interactive Payment */}
+                    <div className="p-3.5 rounded-xl bg-gradient-to-br from-neutral-900 to-blue-950/40 border border-blue-900/40 space-y-2">
+                      <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider block flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+                        Midtrans Payment Gateway (Otomatis Sesuai Pilihan)
+                      </span>
+                      <button
+                        onClick={handleMidtransPay}
+                        className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-blue-950/50"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Buka Pembayaran Midtrans ({formatIDR(order.grand_total)})</span>
+                        <ExternalLink className="w-3.5 h-3.5 ml-1" />
+                      </button>
+                      <span className="text-[10px] text-neutral-400 block text-center">
+                        Membuka opsi pembayaran {order.payment_method?.toUpperCase()} di Midtrans
+                      </span>
+                    </div>
+
+                    {/* Simulator Testing Controls */}
+                    <div className="p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
+                      <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
+                        ⚡ Simulator Pembayaran (Pengujian PRD)
+                      </span>
+                      <button
+                        onClick={handleSimulatePayment}
+                        disabled={isProcessingPay}
+                        className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        <span>{isProcessingPay ? 'Memproses...' : 'Simulasikan Pembayaran Lunas'}</span>
+                      </button>
+                      <button
+                        onClick={handleCancelOrder}
+                        disabled={isProcessingCancel}
+                        className="w-full py-2 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>{isProcessingCancel ? 'Membatalkan...' : 'Batalkan Pesanan Ini'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )
           )}
         </div>
 

@@ -114,6 +114,9 @@ export async function createSnapTransaction(
       },
     },
     item_details: itemDetails,
+    ...(payload.enabledPayments && payload.enabledPayments.length > 0
+      ? { enabled_payments: payload.enabledPayments }
+      : {}),
     callbacks: {
       finish: `http://localhost:3000/orders/${payload.invoiceNumber}`,
     },

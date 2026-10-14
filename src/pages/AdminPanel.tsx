@@ -135,6 +135,29 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleRequestBiteshipPickup = async (orderId: string) => {
+    if (!confirm('Request pickup kurir ke Biteship Sandbox sekarang? Nomor resi akan otomatis terbit.')) return;
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/biteship-ship`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal request pickup Biteship');
+      alert(`Berhasil! Nomor Resi Biteship: ${data.trackingNumber}`);
+      fetchAllAdminData();
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder((prev) =>
+          prev ? { ...prev, status: 'SHIPPED', tracking_number: data.trackingNumber } : null
+        );
+      }
+    } catch (err: any) {
+      alert('Error Biteship: ' + err.message);
+    }
+  };
+
   // Product Handlers
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -947,9 +970,26 @@ export const AdminPanel: React.FC = () => {
 
               {selectedOrder.status === 'PAID' && (
                 <div className="space-y-3">
-                  <div>
+                  <div className="p-3 rounded-lg bg-orange-950/40 border border-orange-900/50 space-y-2">
+                    <span className="text-[10px] text-orange-400 font-bold uppercase tracking-wider block flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-orange-400" />
+                      Biteship Sandbox Logistics
+                    </span>
+                    <button
+                      onClick={() => handleRequestBiteshipPickup(selectedOrder.id)}
+                      className="w-full py-2.5 rounded-lg bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-orange-950/40 cursor-pointer transition-all"
+                    >
+                      <Package className="w-4 h-4" />
+                      <span>Request Pickup Biteship (Resi Otomatis)</span>
+                    </button>
+                    <span className="text-[10px] text-neutral-400 block text-center">
+                      Booking kurir {selectedOrder.courier_name} langsung ke Biteship API
+                    </span>
+                  </div>
+
+                  <div className="pt-1 border-t border-neutral-800">
                     <label className="block text-[11px] font-bold text-neutral-300 mb-1">
-                      Input Nomor Resi Kurir ({selectedOrder.courier_name})
+                      Atau Input Nomor Resi Manual ({selectedOrder.courier_name})
                     </label>
                     <input
                       type="text"

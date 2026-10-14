@@ -189,7 +189,7 @@ export async function createBiteshipShippingOrder(params: {
 
     courier_company: cleanCourierCompany,
     courier_type: (params.courierType || 'reg').toLowerCase(),
-    delivery_type: 'later',
+    delivery_type: 'now',
     order_note: `Pesanan Jawir Garage: ${params.invoiceNumber}`,
 
     items: params.items.map((i) => ({
@@ -243,7 +243,7 @@ export async function trackBiteshipShipment(
 
   try {
     let url = `${BITESHIP_BASE_URL}/trackings/${encodeURIComponent(trackingIdOrWaybill)}`;
-    if (courierCode && trackingIdOrWaybill.startsWith('JP') || trackingIdOrWaybill.length > 8) {
+    if (courierCode && !trackingIdOrWaybill.match(/^[a-zA-Z0-9]{20,30}$/)) {
       url = `${BITESHIP_BASE_URL}/trackings/${encodeURIComponent(trackingIdOrWaybill)}/couriers/${courierCode.toLowerCase()}`;
     }
 
@@ -264,6 +264,7 @@ export async function trackBiteshipShipment(
       waybillId: data.waybill_id || trackingIdOrWaybill,
       courier: data.courier,
       status: data.status,
+      link: data.link,
       history: (data.history || []).map((h: any) => ({
         note: h.note,
         status: h.status,

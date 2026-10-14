@@ -103,6 +103,8 @@ export interface Order {
   status: OrderStatus;
   payment_method: string;
   payment_url?: string | null;
+  snap_token?: string | null;
+  biteship_order_id?: string | null;
   expired_at: string;
   paid_at?: string | null;
   created_at: string;

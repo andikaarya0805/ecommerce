@@ -736,7 +736,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               {user ? (
                 <button
                   id="cart-checkout-btn"
-                  onClick={() => setIsCheckingOut(true)}
+                  onClick={() => {
+                    onClose();
+                    navigate('/checkout');
+                  }}
                   className="w-full py-3 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-sm shadow-lg shadow-red-950/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
                 >
                   <span>Lanjut Checkout ({formatIDR(grandTotal)})</span>
@@ -747,7 +750,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   id="cart-login-checkout-btn"
                   onClick={() => {
                     onClose();
-                    navigate('/login');
+                    navigate('/login?redirect=/checkout');
                   }}
                   className="w-full py-3 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-sm shadow-lg shadow-red-950/40 flex items-center justify-center gap-2 cursor-pointer transition-all"
                 >

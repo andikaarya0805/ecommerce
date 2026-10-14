@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ShoppingBag, X, Bike, Flame, Sparkles, User, Settings, Truck } from 'lucide-react';
+import { Search, ShoppingBag, X, Bike, Flame, Sparkles, User, Settings, Truck, Package } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { UserBike } from '../types';
@@ -89,13 +89,23 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </button>
 
+            {/* Pesanan Saya (Shopee Style Order History) Button */}
+            <button
+              onClick={() => navigate('/orders')}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#EE4D2D] text-xs font-semibold transition-all"
+              title="Riwayat Pesanan Saya"
+            >
+              <Package className="w-4 h-4 text-[#EE4D2D]" />
+              <span className="hidden md:inline">Pesanan Saya</span>
+            </button>
+
             {/* Track Order Button */}
             <button
               onClick={() => navigate('/track-order')}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#E50914] text-xs font-semibold transition-all"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#EE4D2D] text-xs font-semibold transition-all"
               title="Lacak Status Pesanan & Resi"
             >
-              <Truck className="w-4 h-4 text-[#E50914]" />
+              <Truck className="w-4 h-4 text-[#EE4D2D]" />
               <span>Lacak Resi</span>
             </button>
 

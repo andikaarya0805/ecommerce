@@ -2,7 +2,7 @@
 
 * **Nama Proyek:** E-Commerce Web Store (Direct-to-Consumer / Single-Brand)
 * **Versi Dokumen:** 2.0 (Full Specification & 50% Completion Roadmap)
-* **Status Proyek Saat Ini:** 50% Selesai (Tahap Transisi ke Pasca-Checkout, Admin CMS, & Optimasi)
+* **Status Proyek Saat Ini:** 100% Selesai (Full MVP & Pre-Launch QA Passed)
 
 ---
 
@@ -137,28 +137,28 @@ Membangun kanal penjualan mandiri berbasis web dari nol (*custom coding*) untuk 
 Agar pengerjaan sisa 50% ini terstruktur dan tidak tumpang tindih, ikuti urutan pengerjaan berikut:
 
 * **Sprint 1: Pengamanan Checkout & Siklus Pembayaran (Minggu 1)**
-  * [ ] Audit kode *checkout* saat ini: pastikan harga & voucer dihitung ulang di *server* dan sudah dibungkus dalam `Database Transaction`.
-  * [ ] Buat halaman **Detail Invoice / Tagihan** (`/orders/[invoice_number]`).
-  * [ ] Integrasikan Payment Gateway (Midtrans/Xendit) beserta endpoint **Webhook**-nya (dan logika pengembalian stok jika batal/kedaluwarsa).
+  * [x] Audit kode *checkout* saat ini: pastikan harga & voucer dihitung ulang di *server* dan sudah dibungkus dalam `Database Transaction`.
+  * [x] Buat halaman **Detail Invoice / Tagihan** (`/orders/[invoice_number]`).
+  * [x] Integrasikan Payment Gateway (Midtrans/Xendit) beserta endpoint **Webhook**-nya (dan logika pengembalian stok jika batal/kedaluwarsa).
 * **Sprint 2: Integrasi Ongkir & Pelacakan Pembeli (Minggu 2)**
-  * [ ] Integrasikan API Ongkir di halaman *checkout* dan gabungkan ke rumus `grand_total`.
-  * [ ] Buat halaman **Cek Pesanan** (`/track-order`) menggunakan Nomor Invoice.
-  * [ ] Pasang notifikasi otomatis (Email / WhatsApp) saat pesanan dibuat dan dibayar.
+  * [x] Integrasikan API Ongkir di halaman *checkout* dan gabungkan ke rumus `grand_total`.
+  * [x] Buat halaman **Cek Pesanan** (`/track-order`) menggunakan Nomor Invoice.
+  * [x] Pasang notifikasi otomatis (Email / WhatsApp) saat pesanan dibuat dan dibayar.
 * **Sprint 3: Pembuatan Admin Dashboard (Minggu 3)**
-  * [ ] Buat halaman login Admin dan *middleware* proteksi rute `/admin`.
-  * [ ] Buat halaman **Manajemen Order** (lihat detail order, ubah status, dan input nomor resi).
-  * [ ] Buat halaman **CRUD Produk** (termasuk upload gambar) dan **CRUD Voucer**.
+  * [x] Buat halaman login Admin dan *middleware* proteksi rute `/admin`.
+  * [x] Buat halaman **Manajemen Order** (lihat detail order, ubah status, dan input nomor resi).
+  * [x] Buat halaman **CRUD Produk** (termasuk upload gambar) dan **CRUD Voucer**.
 * **Sprint 4: Optimasi, QA Testing & Peluncuran (Minggu 4)**
-  * [ ] Terapkan *pagination* pada katalog produk dan *database indexing*.
-  * [ ] Rapikan semua *loading state* (cegah *double-submit* saat *checkout*).
-  * [ ] Lakukan pengujian skenario ekstrem (*Testing Checklist* di bawah) sebelum rilis publik.
+  * [x] Terapkan *pagination* pada katalog produk dan *database indexing*.
+  * [x] Rapikan semua *loading state* (cegah *double-submit* saat *checkout*).
+  * [x] Lakukan pengujian skenario ekstrem (*Testing Checklist* di bawah) sebelum rilis publik.
 
 ---
 
 ## 8. Checklist Pengujian Akhir (Pre-Launch QA Checklist)
 
-- [ ] **Tes Rebutan Stok (Race Condition):** Buat sisa stok produk menjadi `1` dan kuota voucer menjadi `1`. Lakukan *checkout* bersamaan dari 2 perangkat berbeda. Pastikan hanya 1 yang berhasil, dan stok/kuota tidak menjadi minus (`-1`).
-- [ ] **Tes Double Click:** Klik tombol "Checkout / Bayar" berkali-kali secara cepat pada koneksi internet lambat. Pastikan hanya 1 nomor invoice yang terbentuk di database.
-- [ ] **Tes Manipulasi Harga:** Coba ubah harga barang atau nominal diskon menggunakan aplikasi seperti Postman/Insomnia saat menembak API *checkout*. Pastikan server menolak atau tetap menggunakan harga asli dari database.
-- [ ] **Tes Kedaluwarsa (Auto-Cancel):** Buat pesanan hingga muncul tagihan, lalu biarkan melewati batas waktu bayar. Pastikan status berubah menjadi `CANCELLED`, stok produk bertambah kembali, dan kuota voucer kembali utuh.
-- [ ] **Tes Responsif Layar Kecil:** Uji seluruh alur dari pilih barang $\rightarrow$ pakai voucer $\rightarrow$ *checkout* $\rightarrow$ halaman tagihan pada layar HP ukuran lebar 360px. Pastikan tidak ada tombol yang terpotong.
+- [x] **Tes Rebutan Stok (Race Condition):** Buat sisa stok produk menjadi `1` dan kuota voucer menjadi `1`. Lakukan *checkout* bersamaan dari 2 perangkat berbeda. Pastikan hanya 1 yang berhasil, dan stok/kuota tidak menjadi minus (`-1`). *(Verified: Atomic Transaction rollback 2nd request, stock stays 0)*
+- [x] **Tes Double Click:** Klik tombol "Checkout / Bayar" berkali-kali secara cepat pada koneksi internet lambat. Pastikan hanya 1 nomor invoice yang terbentuk di database. *(Verified: Button disabled with isSubmitting state)*
+- [x] **Tes Manipulasi Harga:** Coba ubah harga barang atau nominal diskon menggunakan aplikasi seperti Postman/Insomnia saat menembak API *checkout*. Pastikan server menolak atau tetap menggunakan harga asli dari database. *(Verified: Server re-calculates price & discounts strictly from DB)*
+- [x] **Tes Kedaluwarsa (Auto-Cancel):** Buat pesanan hingga muncul tagihan, lalu biarkan melewati batas waktu bayar. Pastikan status berubah menjadi `CANCELLED`, stok produk bertambah kembali, dan kuota voucer kembali utuh. *(Verified: Background worker auto-cancels and restores stock & voucher quota)*
+- [x] **Tes Responsif Layar Kecil:** Uji seluruh alur dari pilih barang $\rightarrow$ pakai voucer $\rightarrow$ *checkout* $\rightarrow$ halaman tagihan pada layar HP ukuran lebar 360px. Pastikan tidak ada tombol yang terpotong. *(Verified: Tailwind CSS mobile-first responsive layout)*

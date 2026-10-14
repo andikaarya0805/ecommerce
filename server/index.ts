@@ -6,7 +6,21 @@ import dotenv from 'dotenv';
 import path from 'path';
 import db, { initDb } from './db.js';
 import { supabase, isSupabaseConfigured } from './supabase.js';
+import {
+  createSnapTransaction,
+  verifyMidtransSignature,
+  isMidtransConfigured,
+  getMidtransClientKey,
+} from './midtrans.js';
+import {
+  searchBiteshipAreas,
+  calculateBiteshipRates,
+  createBiteshipShippingOrder,
+  trackBiteshipShipment,
+  isBiteshipConfigured,
+} from './biteship.js';
 
+// Load environment variables from .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-jawir-garage-ecommerce';
@@ -336,11 +350,52 @@ app.get('/api/shipping/destinations', (req, res) => {
   res.json(INDONESIA_DESTINATIONS);
 });
 
-app.post('/api/shipping/calculate', (req: any, res: any) => {
-  const { province, city, district, weightGrams } = req.body;
+app.get('/api/shipping/areas', async (req: any, res: any) => {
+  const query = (req.query.search as string) || (req.query.q as string) || '';
+  if (!query || query.trim().length < 2) {
+    return res.json([]);
+  }
+  const areas = await searchBiteshipAreas(query);
+  res.json(areas);
+});
+
+app.post('/api/shipping/calculate', async (req: any, res: any) => {
+  const { province, city, district, weightGrams, destinationAreaId, destinationPostalCode, items } = req.body;
   const weight = Math.max(500, weightGrams || 500);
   const weightKg = Math.ceil(weight / 1000);
 
+  // If Biteship is configured, attempt live courier rate fetching
+  if (isBiteshipConfigured() && (destinationAreaId || destinationPostalCode)) {
+    try {
+      const rateItems = Array.isArray(items) && items.length > 0
+        ? items.map((it: any) => ({
+            name: it.name || it.product?.name || 'Part Motor',
+            value: it.price || it.product?.price || 100000,
+            weight: it.weight_grams || it.product?.weight_grams || Math.round(weight / items.length),
+            quantity: it.quantity || 1,
+          }))
+        : [{ name: 'Part Motor Racing', value: 150000, weight, quantity: 1 }];
+
+      const biteshipRates = await calculateBiteshipRates({
+        destinationAreaId,
+        destinationPostalCode: destinationPostalCode ? parseInt(destinationPostalCode) : undefined,
+        items: rateItems,
+      });
+
+      if (biteshipRates && biteshipRates.length > 0) {
+        return res.json({
+          source: 'biteship',
+          weightGrams: weight,
+          weightKg,
+          services: biteshipRates,
+        });
+      }
+    } catch (err: any) {
+      console.warn('[Biteship] Falling back to standard rate table:', err.message);
+    }
+  }
+
+  // Graceful fallback to Indonesia rate table
   let baseRate = 12000;
   const provObj = INDONESIA_DESTINATIONS.find((p) => p.province === province);
   if (provObj) {
@@ -354,6 +409,8 @@ app.post('/api/shipping/calculate', (req: any, res: any) => {
     {
       courierName: 'JNE Express',
       courierService: 'REG (Reguler)',
+      courierCode: 'jne',
+      courierServiceCode: 'reg',
       etd: '2 - 3 Hari',
       cost: baseRate * weightKg,
       description: 'Layanan terpercaya seluruh Indonesia',
@@ -361,6 +418,8 @@ app.post('/api/shipping/calculate', (req: any, res: any) => {
     {
       courierName: 'JNE Express',
       courierService: 'YES (Yakin Esok Sampai)',
+      courierCode: 'jne',
+      courierServiceCode: 'yes',
       etd: '1 Hari (Besok Sampai)',
       cost: (baseRate + 12000) * weightKg,
       description: 'Prioritas cepat khusus part mendesak',
@@ -368,6 +427,8 @@ app.post('/api/shipping/calculate', (req: any, res: any) => {
     {
       courierName: 'J&T Express',
       courierService: 'EZ Reguler',
+      courierCode: 'jnt',
+      courierServiceCode: 'ez',
       etd: '2 - 3 Hari',
       cost: (baseRate - 1000) * weightKg,
       description: 'Pick up cepat & tracking akurat 24 jam',
@@ -375,19 +436,38 @@ app.post('/api/shipping/calculate', (req: any, res: any) => {
     {
       courierName: 'SiCepat',
       courierService: 'BEST (Besok Sampai Tujuan)',
+      courierCode: 'sicepat',
+      courierServiceCode: 'best',
       etd: '1 - 2 Hari',
       cost: (baseRate + 8000) * weightKg,
       description: 'Estimasi kilat bergaransi tepat waktu',
     },
   ];
 
-  res.json({ weightGrams: weight, weightKg, services });
+  res.json({ source: 'local_table', weightGrams: weight, weightKg, services });
 });
+
+// Helper mapping payment method from Shopee style to Midtrans enabled_payments
+function mapPaymentMethodToMidtrans(method?: string): string[] | undefined {
+  if (!method) return undefined;
+  const m = method.toLowerCase().trim();
+  if (m === 'bca' || m === 'bca_va') return ['bca_va'];
+  if (m === 'mandiri' || m === 'mandiri_va' || m === 'echannel') return ['echannel'];
+  if (m === 'bni' || m === 'bni_va') return ['bni_va'];
+  if (m === 'bri' || m === 'bri_va') return ['bri_va'];
+  if (m === 'permata' || m === 'permata_va') return ['permata_va'];
+  if (m === 'cimb' || m === 'cimb_va') return ['cimb_va'];
+  if (m === 'qris') return ['qris', 'gopay', 'shopeepay'];
+  if (m === 'gopay') return ['gopay'];
+  if (m === 'shopeepay') return ['shopeepay'];
+  if (m === 'credit_card' || m === 'card' || m === 'cc') return ['credit_card'];
+  return undefined;
+}
 
 // =====================================================================
 // SPRINT 1: PENGAMANAN CHECKOUT & ATOMIC TRANSACTION (PRD Section 4.1 & 6.1)
 // =====================================================================
-app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, (req: any, res: any) => {
+app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: any, res: any) => {
   const { items, voucherCode, customer, shipping, paymentMethod } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -542,7 +622,47 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, (req: any, res
 
     db.exec('COMMIT');
 
-    console.log(`[Order Created] Invoice: ${invoiceNumber}, Total: Rp ${grandTotal.toLocaleString('id-ID')}`);
+    // Generate Midtrans Snap Token if configured AND NOT COD
+    let snapToken: string | null = null;
+    let paymentUrl: string | null = null;
+    const isCod = (paymentMethod || '').toLowerCase() === 'cod';
+
+    if (isMidtransConfigured() && !isCod) {
+      try {
+        const enabledPayments = mapPaymentMethodToMidtrans(paymentMethod);
+        const snapRes = await createSnapTransaction({
+          invoiceNumber,
+          grandTotal,
+          customer: {
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+            address: shipping.address,
+            city: shipping.city,
+          },
+          items: itemsSnapshot.map((s) => ({
+            id: s.productId,
+            price: s.price,
+            quantity: s.quantity,
+            name: s.name,
+          })),
+          shippingCost,
+          courierInfo: `${shipping.courierName || 'JNE'} ${shipping.courierService || 'REG'}`,
+          discountAmount,
+          enabledPayments,
+        });
+
+        if (snapRes) {
+          snapToken = snapRes.token;
+          paymentUrl = snapRes.redirect_url;
+          db.prepare('UPDATE orders SET snap_token = ?, payment_url = ? WHERE id = ?').run(snapToken, paymentUrl, orderId);
+        }
+      } catch (mErr: any) {
+        console.warn('[Midtrans] Error creating transaction token:', mErr.message);
+      }
+    }
+
+    console.log(`[Order Created] Invoice: ${invoiceNumber}, Total: Rp ${grandTotal.toLocaleString('id-ID')}, Method: ${paymentMethod || 'qris'}`);
 
     res.json({
       success: true,
@@ -553,6 +673,8 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, (req: any, res
       shippingCost,
       grandTotal,
       expiredAt,
+      snapToken,
+      paymentUrl,
     });
   } catch (error: any) {
     db.exec('ROLLBACK');
@@ -565,8 +687,17 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, (req: any, res
 // ORDER DETAILS, SIMULATOR & TRACKING (PRD Section 4.1 & 4.2)
 // =====================================================================
 
+// Get Payment Gateway Configuration (Public)
+app.get('/api/payment/config', (req: any, res: any) => {
+  res.json({
+    midtransClientKey: getMidtransClientKey(),
+    isMidtransEnabled: isMidtransConfigured(),
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
+  });
+});
+
 // Get Order Details by Invoice Number
-app.get('/api/orders/:invoiceNumber', (req: any, res: any) => {
+app.get('/api/orders/:invoiceNumber', async (req: any, res: any) => {
   const { invoiceNumber } = req.params;
   const order = db.prepare('SELECT * FROM orders WHERE invoice_number = ?').get(invoiceNumber) as any;
 
@@ -575,6 +706,47 @@ app.get('/api/orders/:invoiceNumber', (req: any, res: any) => {
   }
 
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id) as any[];
+
+  // If pending and no snap token, generate it if Midtrans is configured AND not COD
+  const isOrderCod = (order.payment_method || '').toLowerCase() === 'cod';
+  if (order.status === 'PENDING' && !order.snap_token && isMidtransConfigured() && !isOrderCod) {
+    try {
+      const enabledPayments = mapPaymentMethodToMidtrans(order.payment_method);
+      const snapRes = await createSnapTransaction({
+        invoiceNumber: order.invoice_number,
+        grandTotal: order.grand_total,
+        customer: {
+          name: order.customer_name,
+          email: order.customer_email,
+          phone: order.customer_phone,
+          address: order.shipping_address,
+          city: order.shipping_city,
+        },
+        items: items.map((s) => ({
+          id: s.product_id,
+          price: s.price_snapshot,
+          quantity: s.quantity,
+          name: s.product_name_snapshot,
+        })),
+        shippingCost: order.shipping_cost,
+        courierInfo: `${order.courier_name} ${order.courier_service}`,
+        discountAmount: order.discount_amount,
+        enabledPayments,
+      });
+
+      if (snapRes) {
+        order.snap_token = snapRes.token;
+        order.payment_url = snapRes.redirect_url;
+        db.prepare('UPDATE orders SET snap_token = ?, payment_url = ? WHERE id = ?').run(
+          snapRes.token,
+          snapRes.redirect_url,
+          order.id
+        );
+      }
+    } catch (e: any) {
+      console.warn('[Midtrans] Error generating snap token on invoice view:', e.message);
+    }
+  }
 
   res.json({
     ...order,
@@ -664,20 +836,28 @@ app.post('/api/orders/:invoiceNumber/cancel', (req: any, res: any) => {
 // =====================================================================
 // WEBHOOK PAYMENT GATEWAY (Midtrans / Xendit Format) (PRD Section 4.1)
 // =====================================================================
-app.post('/api/webhooks/payment', (req: any, res: any) => {
+// WEBHOOK PAYMENT GATEWAY (Midtrans / Standard Format) (PRD Section 4.1)
+app.post(['/api/webhooks/payment', '/api/webhooks/midtrans'], (req: any, res: any) => {
   const signature = req.headers['x-callback-token'] || req.headers['signature-key'];
-  const { order_id, transaction_status, gross_amount, status_code } = req.body;
+  const { order_id, transaction_status, gross_amount, status_code, signature_key, fraud_status, payment_type } = req.body;
 
-  console.log('[Webhook Received]', req.body);
-
-  // Validate signature if provided
-  if (signature && signature !== WEBHOOK_SIGNATURE_KEY) {
-    return res.status(403).json({ error: 'Signature key tidak valid' });
-  }
+  console.log('[Payment Webhook Received]', req.body);
 
   const invoiceNumber = order_id || req.body.invoiceNumber;
   if (!invoiceNumber) {
     return res.status(400).json({ error: 'order_id / invoiceNumber wajib disertakan' });
+  }
+
+  // Validate Midtrans signature if signature_key is present and server key configured
+  const midtransSig = signature_key || signature;
+  if (isMidtransConfigured() && midtransSig && status_code && gross_amount) {
+    const isValid = verifyMidtransSignature(order_id, String(status_code), String(gross_amount), midtransSig);
+    if (!isValid) {
+      console.warn('[Midtrans] Invalid webhook signature detected for order:', order_id);
+      return res.status(403).json({ error: 'Signature key tidak valid' });
+    }
+  } else if (signature && signature !== WEBHOOK_SIGNATURE_KEY && !isMidtransConfigured()) {
+    return res.status(403).json({ error: 'Signature key tidak valid' });
   }
 
   const order = db.prepare('SELECT * FROM orders WHERE invoice_number = ?').get(invoiceNumber) as any;
@@ -686,15 +866,25 @@ app.post('/api/webhooks/payment', (req: any, res: any) => {
   }
 
   // Idempotency check: jika status sudah sama, jangan proses ganda
-  if (transaction_status === 'settlement' || transaction_status === 'capture' || transaction_status === 'PAID') {
+  if (
+    transaction_status === 'settlement' ||
+    (transaction_status === 'capture' && (!fraud_status || fraud_status === 'accept')) ||
+    transaction_status === 'PAID'
+  ) {
     if (order.status === 'PAID') {
       return res.json({ status: 'ok', message: 'Order sudah berstatus PAID (Idempotent)' });
     }
-    db.prepare(`UPDATE orders SET status = 'PAID', paid_at = datetime('now') WHERE id = ?`).run(order.id);
+    const payMethod = payment_type || order.payment_method;
+    db.prepare(`UPDATE orders SET status = 'PAID', paid_at = datetime('now'), payment_method = ? WHERE id = ?`).run(payMethod, order.id);
     return res.json({ status: 'ok', message: 'Status order berhasil diperbarui menjadi PAID' });
   }
 
-  if (transaction_status === 'expire' || transaction_status === 'cancel' || transaction_status === 'CANCELLED') {
+  if (
+    transaction_status === 'expire' ||
+    transaction_status === 'cancel' ||
+    transaction_status === 'deny' ||
+    transaction_status === 'CANCELLED'
+  ) {
     if (order.status === 'CANCELLED') {
       return res.json({ status: 'ok', message: 'Order sudah berstatus CANCELLED (Idempotent)' });
     }
@@ -719,6 +909,34 @@ app.post('/api/webhooks/payment', (req: any, res: any) => {
   }
 
   res.json({ status: 'ignored', message: 'Status tidak memerlukan tindakan' });
+});
+
+// WEBHOOK BITESHIP (Logistics Event Updates)
+app.post('/api/webhooks/biteship', (req: any, res: any) => {
+  const { event, order_id, tracking_id, waybill_id, status } = req.body;
+  console.log('[Biteship Webhook Received]', event, status, order_id, waybill_id);
+
+  if (!order_id && !waybill_id) {
+    return res.status(400).json({ error: 'order_id / waybill_id wajib disertakan' });
+  }
+
+  const order = db.prepare(`
+    SELECT * FROM orders 
+    WHERE biteship_order_id = ? OR tracking_number = ? OR biteship_tracking_id = ?
+  `).get(order_id || '', waybill_id || '', tracking_id || '') as any;
+
+  if (order) {
+    if (status === 'delivered') {
+      db.prepare(`UPDATE orders SET status = 'COMPLETED' WHERE id = ?`).run(order.id);
+    } else if (status === 'picked' || status === 'dropping_off' || status === 'in_transit') {
+      db.prepare(`UPDATE orders SET status = 'SHIPPED', tracking_number = COALESCE(tracking_number, ?) WHERE id = ?`).run(
+        waybill_id || tracking_id,
+        order.id
+      );
+    }
+  }
+
+  res.json({ success: true, message: 'Biteship webhook diterima' });
 });
 
 // =====================================================================
@@ -754,6 +972,31 @@ app.post('/api/auth/register', (req: any, res: any) => {
 
 app.get('/api/auth/me', authMiddleware, (req: any, res: any) => {
   res.json({ user: req.user });
+});
+
+// User Order History (Shopee Style "Pesanan Saya")
+app.get('/api/user/orders', authMiddleware, (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    const username = req.user?.username;
+
+    const orders = db.prepare(`
+      SELECT * FROM orders 
+      WHERE user_id = ? OR customer_name = ?
+      ORDER BY created_at DESC
+    `).all(userId, username) as any[];
+
+    const getItems = db.prepare('SELECT * FROM order_items WHERE order_id = ?');
+
+    const ordersWithItems = orders.map((o) => ({
+      ...o,
+      items: getItems.all(o.id),
+    }));
+
+    res.json(ordersWithItems);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =====================================================================
@@ -854,6 +1097,88 @@ app.patch('/api/admin/orders/:id/status', authMiddleware, adminMiddleware, (req:
   }
 
   res.json({ success: true, message: `Status pesanan berhasil diubah menjadi ${status}` });
+});
+
+// Admin Biteship Request Pickup & Automatic Waybill (Resi)
+app.post('/api/admin/orders/:id/biteship-ship', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  const { id } = req.params;
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as any;
+  if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
+
+  if (order.status !== 'PAID') {
+    return res.status(400).json({ error: 'Hanya pesanan berstatus Lunas (PAID) yang dapat di-request pickup' });
+  }
+
+  const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(id) as any[];
+
+  let trackingNumber = `RES-${order.courier_name.replace(/[^A-Z]/g, '').slice(0, 3)}-${Date.now().toString().slice(-6)}`;
+  let biteshipOrderId = null;
+  let biteshipTrackingId = null;
+
+  if (isBiteshipConfigured()) {
+    try {
+      const shipRes = await createBiteshipShippingOrder({
+        invoiceNumber: order.invoice_number,
+        customerName: order.customer_name,
+        customerPhone: order.customer_phone,
+        shippingAddress: order.shipping_address,
+        shippingCity: order.shipping_city,
+        destinationAreaId: order.destination_area_id,
+        courierCompany: order.courier_name,
+        courierType: order.courier_service,
+        items: items.map((it) => ({
+          name: it.product_name_snapshot,
+          price: it.price_snapshot,
+          quantity: it.quantity,
+        })),
+      });
+
+      if (shipRes) {
+        biteshipOrderId = shipRes.biteshipOrderId;
+        biteshipTrackingId = shipRes.trackingId;
+        if (shipRes.waybillId) trackingNumber = shipRes.waybillId;
+      }
+    } catch (err: any) {
+      console.warn('[Biteship] Error during booking pickup:', err.message);
+    }
+  }
+
+  db.prepare(`
+    UPDATE orders 
+    SET status = 'SHIPPED', tracking_number = ?, biteship_order_id = ?, biteship_tracking_id = ?
+    WHERE id = ?
+  `).run(trackingNumber, biteshipOrderId, biteshipTrackingId, id);
+
+  res.json({
+    success: true,
+    message: `Pickup kurir ${order.courier_name} berhasil dibuat!`,
+    trackingNumber,
+    biteshipOrderId,
+  });
+});
+
+// Live Biteship Tracking Endpoint (Customer & OMS)
+app.get('/api/orders/:invoiceNumber/biteship-track', async (req: any, res: any) => {
+  const { invoiceNumber } = req.params;
+  const order = db.prepare('SELECT * FROM orders WHERE invoice_number = ?').get(invoiceNumber) as any;
+  if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
+
+  let liveTracking = null;
+  if (isBiteshipConfigured() && (order.biteship_tracking_id || order.tracking_number)) {
+    try {
+      liveTracking = await trackBiteshipShipment(
+        order.biteship_tracking_id || order.tracking_number,
+        order.courier_name
+      );
+    } catch (e: any) {
+      console.warn('[Biteship] Tracking query error:', e.message);
+    }
+  }
+
+  res.json({
+    order,
+    liveTracking,
+  });
 });
 
 // Admin Products (CRUD)
