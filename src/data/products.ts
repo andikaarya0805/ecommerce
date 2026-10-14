@@ -1,4 +1,4 @@
-import { Voucher, Product } from '../types.ts';
+import type { Voucher, Product } from '../types.ts';
 
 export const CATEGORY_ITEMS = [
   {

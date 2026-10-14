@@ -1,4 +1,4 @@
-import db, { initDb } from './db.js';
+import db, { initDb } from './db.ts';
 import {
   INITIAL_PRODUCTS,
   INITIAL_VOUCHERS,
