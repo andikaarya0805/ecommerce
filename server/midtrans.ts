@@ -45,6 +45,7 @@ export interface CreateSnapPayload {
   shippingCost?: number;
   courierInfo?: string;
   discountAmount?: number;
+  enabledPayments?: string[];
 }
 
 export interface SnapResponse {

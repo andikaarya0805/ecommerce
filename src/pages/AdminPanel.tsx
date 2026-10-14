@@ -26,6 +26,8 @@ import {
   ExternalLink,
   X
 } from 'lucide-react';
+import { safeFetchJson } from '../config/api';
+import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
 
 export const AdminPanel: React.FC = () => {
   const { user, token, logout } = useAuth();
@@ -86,19 +88,53 @@ export const AdminPanel: React.FC = () => {
   const fetchAllAdminData = async () => {
     setLoading(true);
     try {
-      const [resAnalytics, resOrders, resProducts, resVouchers] = await Promise.all([
-        fetch('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
-        fetch('/api/admin/orders', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
-        fetch('/api/admin/products', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
-        fetch('/api/admin/vouchers', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),
+      if (token?.startsWith('demo-')) {
+        setAnalytics({
+          totalRevenue: 3450000,
+          needShipping: 1,
+          lowStockCount: 1,
+          lowStockItems: INITIAL_PRODUCTS.filter((p) => p.stock <= 2),
+          totalOrders: 4,
+        });
+        setOrders([]);
+        setProducts(INITIAL_PRODUCTS);
+        setVouchers(INITIAL_VOUCHERS);
+        setLoading(false);
+        return;
+      }
+
+      const [resAnalytics, resOrders, resProducts, resVouchers] = await Promise.allSettled([
+        safeFetchJson('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` } }),
+        safeFetchJson('/api/admin/orders', { headers: { Authorization: `Bearer ${token}` } }),
+        safeFetchJson('/api/admin/products', { headers: { Authorization: `Bearer ${token}` } }),
+        safeFetchJson('/api/admin/vouchers', { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
-      setAnalytics(resAnalytics && typeof resAnalytics === 'object' && !resAnalytics.error ? resAnalytics : { totalRevenue: 0, needShipping: 0, lowStockCount: 0, lowStockItems: [], totalOrders: 0 });
-      setOrders(Array.isArray(resOrders) ? resOrders : []);
-      setProducts(Array.isArray(resProducts) ? resProducts : []);
-      setVouchers(Array.isArray(resVouchers) ? resVouchers : []);
+      if (resAnalytics.status === 'fulfilled' && resAnalytics.value && typeof resAnalytics.value === 'object') {
+        setAnalytics(resAnalytics.value);
+      } else {
+        setAnalytics({ totalRevenue: 0, needShipping: 0, lowStockCount: 0, lowStockItems: [], totalOrders: 0 });
+      }
+
+      if (resOrders.status === 'fulfilled' && Array.isArray(resOrders.value)) {
+        setOrders(resOrders.value);
+      } else {
+        setOrders([]);
+      }
+
+      if (resProducts.status === 'fulfilled' && Array.isArray(resProducts.value) && resProducts.value.length > 0) {
+        setProducts(resProducts.value);
+      } else {
+        setProducts(INITIAL_PRODUCTS);
+      }
+
+      if (resVouchers.status === 'fulfilled' && Array.isArray(resVouchers.value) && resVouchers.value.length > 0) {
+        setVouchers(resVouchers.value);
+      } else {
+        setVouchers(INITIAL_VOUCHERS);
+      }
     } catch (err) {
-      console.error(err);
+      console.warn('Admin fetch notice:', err);
     } finally {
       setLoading(false);
     }

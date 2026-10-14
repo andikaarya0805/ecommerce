@@ -17,6 +17,7 @@ import {
   Calendar,
   ExternalLink
 } from 'lucide-react';
+import { safeFetchJson } from '../config/api';
 
 export const TrackOrderPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -44,13 +45,7 @@ export const TrackOrderPage: React.FC = () => {
       const url = `/api/orders/track/search?invoice=${encodeURIComponent(
         invoiceInput.trim()
       )}&phone=${encodeURIComponent(phoneInput.trim())}`;
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Pesanan tidak ditemukan');
-      }
-
+      const data = await safeFetchJson<any>(url);
       setOrder(data);
     } catch (err: any) {
       setError(err.message || 'Gagal mencari pesanan');

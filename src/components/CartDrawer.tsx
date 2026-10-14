@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { INDONESIA_DESTINATIONS } from '../data/destinations';
+import { safeFetchJson } from '../config/api';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -64,32 +66,42 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     }
   }, [user]);
 
-  // Shipping & Logistics State
-  const [destinations, setDestinations] = useState<any[]>([]);
-  const [selectedProvince, setSelectedProvince] = useState('');
-  const [selectedCity, setSelectedCity] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('');
-  const [availableCouriers, setAvailableCouriers] = useState<any[]>([]);
-  const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
+  // Shipping & Logistics State (Fallback-enabled)
+  const [destinations, setDestinations] = useState<any[]>(INDONESIA_DESTINATIONS);
+  const [selectedProvince, setSelectedProvince] = useState('DKI Jakarta');
+  const [selectedCity, setSelectedCity] = useState('Jakarta Timur');
+  const [selectedDistrict, setSelectedDistrict] = useState('Cakung');
+  const [availableCouriers, setAvailableCouriers] = useState<any[]>([
+    { courierName: 'JNE', courierService: 'REG (Reguler)', etd: '1-2 Hari', cost: 9000 },
+    { courierName: 'SiCepat', courierService: 'GOKIL (Hemat)', etd: '2-3 Hari', cost: 8000 },
+  ]);
+  const [selectedCourier, setSelectedCourier] = useState<any | null>({
+    courierName: 'JNE',
+    courierService: 'REG (Reguler)',
+    etd: '1-2 Hari',
+    cost: 9000,
+  });
   const [isLoadingShipping, setIsLoadingShipping] = useState(false);
 
   // Fetch Shipping destinations
   useEffect(() => {
-    fetch('/api/shipping/destinations')
-      .then((res) => res.json())
+    safeFetchJson<any[]>('/api/shipping/destinations')
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setDestinations(data);
-          setSelectedProvince(data[0].province);
-          if (data[0].cities?.length > 0) {
-            setSelectedCity(data[0].cities[0].name);
-            if (data[0].cities[0].districts?.length > 0) {
-              setSelectedDistrict(data[0].cities[0].districts[0]);
+          const defaultProv = data.find((d) => d.province === selectedProvince) || data[0];
+          setSelectedProvince(defaultProv.province);
+          if (defaultProv.cities?.length > 0) {
+            setSelectedCity(defaultProv.cities[0].name);
+            if (defaultProv.cities[0].districts?.length > 0) {
+              setSelectedDistrict(defaultProv.cities[0].districts[0]);
             }
           }
         }
       })
-      .catch((err) => console.error('Failed to load destinations:', err));
+      .catch((err) => {
+        console.warn('CartDrawer: Menggunakan data destinasi offline:', err.message);
+      });
   }, []);
 
   // Total weight
@@ -103,7 +115,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     if (!selectedProvince || !selectedCity) return;
     setIsLoadingShipping(true);
 
-    fetch('/api/shipping/calculate', {
+    safeFetchJson<any>('/api/shipping/calculate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -113,16 +125,27 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         weightGrams: totalWeightGrams,
       }),
     })
-      .then((res) => res.json())
       .then((data) => {
         if (data.services && data.services.length > 0) {
           setAvailableCouriers(data.services);
           setSelectedCourier(data.services[0]);
         }
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.warn('CartDrawer kalkulasi ongkir offline:', err.message);
+        const provData = destinations.find((d) => d.province === selectedProvince);
+        const cityData = provData?.cities?.find((c: any) => c.name === selectedCity);
+        const base = cityData?.baseRate || 10000;
+        const weightKg = Math.ceil(Math.max(500, totalWeightGrams) / 1000);
+        const fallback = [
+          { courierName: 'JNE', courierService: 'REG (Reguler)', etd: '1-2 Hari', cost: base * weightKg },
+          { courierName: 'SiCepat', courierService: 'GOKIL (Hemat)', etd: '2-3 Hari', cost: Math.max(8000, (base - 1000) * weightKg) },
+        ];
+        setAvailableCouriers(fallback);
+        setSelectedCourier(fallback[0]);
+      })
       .finally(() => setIsLoadingShipping(false));
-  }, [selectedProvince, selectedCity, selectedDistrict, totalWeightGrams]);
+  }, [selectedProvince, selectedCity, selectedDistrict, totalWeightGrams, destinations]);
 
   if (!isOpen) return null;
 
@@ -194,17 +217,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch('/api/checkout', {
+      const resData = await safeFetchJson<any>('/api/checkout', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
       });
-
-      const resData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(resData.error || 'Checkout gagal diproses');
-      }
 
       onClearCart();
       if (onCheckoutSuccess) onCheckoutSuccess();

@@ -24,6 +24,9 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { INDONESIA_DESTINATIONS } from '../data/destinations';
+import { getApiUrl, safeFetchJson } from '../config/api';
+
 interface CourierOption {
   courierName: string;
   courierService: string;
@@ -52,13 +55,22 @@ export const CheckoutPage: React.FC = () => {
   const [orderNote, setOrderNote] = useState('');
   const [isEditingAddress, setIsEditingAddress] = useState(false);
 
-  // Destinations & Logistics
-  const [destinations, setDestinations] = useState<any[]>([]);
+  // Destinations & Logistics (Initialized with fallback data so dropdown is never empty)
+  const [destinations, setDestinations] = useState<any[]>(INDONESIA_DESTINATIONS);
   const [selectedProvince, setSelectedProvince] = useState('DKI Jakarta');
   const [selectedCity, setSelectedCity] = useState('Jakarta Timur');
   const [selectedDistrict, setSelectedDistrict] = useState('Cakung');
-  const [availableCouriers, setAvailableCouriers] = useState<CourierOption[]>([]);
-  const [selectedCourier, setSelectedCourier] = useState<CourierOption | null>(null);
+  const [availableCouriers, setAvailableCouriers] = useState<CourierOption[]>([
+    { courierName: 'JNE', courierService: 'REG (Reguler)', etd: '1-2 Hari', cost: 9000 },
+    { courierName: 'SiCepat', courierService: 'GOKIL (Hemat)', etd: '2-3 Hari', cost: 8000 },
+    { courierName: 'J&T', courierService: 'EZ (Express)', etd: '1-2 Hari', cost: 10000 },
+  ]);
+  const [selectedCourier, setSelectedCourier] = useState<CourierOption | null>({
+    courierName: 'JNE',
+    courierService: 'REG (Reguler)',
+    etd: '1-2 Hari',
+    cost: 9000,
+  });
   const [isLoadingShipping, setIsLoadingShipping] = useState(false);
 
   // Payment Method Selection (Shopee Style)
@@ -76,10 +88,9 @@ export const CheckoutPage: React.FC = () => {
 
   // Load Midtrans Snap.js script dynamically
   useEffect(() => {
-    fetch('/api/payment/config')
-      .then((res) => res.json())
+    safeFetchJson<any>('/api/payment/config')
       .then((cfg) => {
-        if (cfg.midtransClientKey) {
+        if (cfg?.midtransClientKey) {
           const scriptId = 'midtrans-snap-script';
           if (!document.getElementById(scriptId)) {
             const script = document.createElement('script');
@@ -92,17 +103,16 @@ export const CheckoutPage: React.FC = () => {
           }
         }
       })
-      .catch((e) => console.log('Payment config load:', e));
+      .catch((e) => console.log('Payment config load notice:', e.message));
   }, []);
 
-  // Fetch Shipping destinations
+  // Fetch Shipping destinations (updates dynamically if backend is available)
   useEffect(() => {
-    fetch('/api/shipping/destinations')
-      .then((res) => res.json())
+    safeFetchJson<any[]>('/api/shipping/destinations')
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setDestinations(data);
-          const defaultProv = data.find((d) => d.province === 'DKI Jakarta') || data[0];
+          const defaultProv = data.find((d) => d.province === selectedProvince) || data[0];
           setSelectedProvince(defaultProv.province);
           if (defaultProv.cities?.length > 0) {
             setSelectedCity(defaultProv.cities[0].name);
@@ -112,7 +122,9 @@ export const CheckoutPage: React.FC = () => {
           }
         }
       })
-      .catch((err) => console.error('Failed to load destinations:', err));
+      .catch((err) => {
+        console.warn('Menggunakan data destinasi offline:', err.message);
+      });
   }, []);
 
   const totalWeightGrams = items.reduce(
@@ -125,7 +137,7 @@ export const CheckoutPage: React.FC = () => {
     if (!selectedProvince || !selectedCity) return;
     setIsLoadingShipping(true);
 
-    fetch('/api/shipping/calculate', {
+    safeFetchJson<any>('/api/shipping/calculate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -135,7 +147,6 @@ export const CheckoutPage: React.FC = () => {
         weightGrams: Math.max(500, totalWeightGrams),
       }),
     })
-      .then((res) => res.json())
       .then((data) => {
         setIsLoadingShipping(false);
         if (data.services && data.services.length > 0) {
@@ -144,10 +155,22 @@ export const CheckoutPage: React.FC = () => {
         }
       })
       .catch((err) => {
-        console.error('Failed to fetch shipping:', err);
+        console.warn('Kalkulasi ongkir offline:', err.message);
         setIsLoadingShipping(false);
+        // Fallback calculation using destination base rate
+        const provData = destinations.find((d) => d.province === selectedProvince);
+        const cityData = provData?.cities?.find((c: any) => c.name === selectedCity);
+        const base = cityData?.baseRate || 10000;
+        const weightKg = Math.ceil(Math.max(500, totalWeightGrams) / 1000);
+        const fallbackServices: CourierOption[] = [
+          { courierName: 'JNE', courierService: 'REG (Reguler)', etd: '1-2 Hari', cost: base * weightKg },
+          { courierName: 'SiCepat', courierService: 'GOKIL (Hemat)', etd: '2-3 Hari', cost: Math.max(8000, (base - 1000) * weightKg) },
+          { courierName: 'J&T', courierService: 'EZ (Express)', etd: '1-2 Hari', cost: (base + 1000) * weightKg },
+        ];
+        setAvailableCouriers(fallbackServices);
+        setSelectedCourier(fallbackServices[0]);
       });
-  }, [selectedProvince, selectedCity, selectedDistrict, totalWeightGrams]);
+  }, [selectedProvince, selectedCity, selectedDistrict, totalWeightGrams, destinations]);
 
   // Subtotal, Discount & Grand Total Calculations
   const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
@@ -177,15 +200,11 @@ export const CheckoutPage: React.FC = () => {
     setVoucherError(null);
 
     try {
-      const res = await fetch('/api/voucher/verify', {
+      const data = await safeFetchJson<any>('/api/voucher/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: voucherInput.trim(), subtotal }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Voucher tidak valid');
-      }
       setAppliedVoucher(data.voucher);
       setVoucherInput('');
     } catch (err: any) {
@@ -325,16 +344,11 @@ export const CheckoutPage: React.FC = () => {
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch('/api/checkout', {
+      const data = await safeFetchJson<any>('/api/checkout', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Gagal memproses pesanan.');
-      }
 
       // Order created successfully! Clear Cart.
       clearCart();

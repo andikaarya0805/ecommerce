@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { safeFetchJson } from '../config/api';
 
 interface User {
   id: string;
@@ -23,12 +24,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (token) {
-      fetch('/api/auth/me', {
+      if (token === 'demo-admin-token') {
+        setUser({ id: 'u-admin', username: 'admin', role: 'admin' });
+        setIsLoading(false);
+        return;
+      }
+      if (token === 'demo-user-token') {
+        const savedUser = localStorage.getItem('demo_user_data');
+        const parsed = savedUser ? JSON.parse(savedUser) : { id: 'u-demo', username: 'demo_user', role: 'user' };
+        setUser(parsed);
+        setIsLoading(false);
+        return;
+      }
+
+      safeFetchJson<any>('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => {
-        if (!res.ok) throw new Error('Token invalid');
-        return res.json();
       })
       .then(data => {
         setUser(data.user);

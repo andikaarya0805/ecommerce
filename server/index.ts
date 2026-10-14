@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import db, { initDb } from './db.js';
 import { supabase, isSupabaseConfigured } from './supabase.js';
 import {
@@ -29,6 +30,14 @@ const WEBHOOK_SIGNATURE_KEY = process.env.WEBHOOK_SIGNATURE_KEY || 'jawir-secret
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Normalize URL for Vercel Serverless / reverse proxy rewrites
+app.use((req: any, res: any, next: NextFunction) => {
+  if (req.originalUrl && req.originalUrl.startsWith('/api') && !req.url.startsWith('/api')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
 
 // Initialize database tables
 initDb();
@@ -140,8 +149,10 @@ function checkAndCancelExpiredOrders() {
   }
 }
 
-// Jalankan auto-cancel setiap 30 detik
-setInterval(checkAndCancelExpiredOrders, 30000);
+// Jalankan auto-cancel setiap 30 detik (hanya untuk server persistent, bukan serverless)
+if (!process.env.VERCEL) {
+  setInterval(checkAndCancelExpiredOrders, 30000);
+}
 
 // =====================================================================
 // PUBLIC CATALOG & STOREFRONT ENDPOINTS
@@ -1372,8 +1383,26 @@ app.patch('/api/admin/vouchers/:id/toggle', authMiddleware, adminMiddleware, (re
   res.json({ success: true, is_active: newStatus === 1 });
 });
 
-// START SERVER
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`[Express] Server e-commerce Jawir Garage berjalan di http://localhost:${PORT}`);
-});
+// =====================================================================
+// STATIC FILE SERVING & SPA FALLBACK (Render, Railway, VPS, cPanel)
+// =====================================================================
+const distPath = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+// START SERVER (standalone only, skipped on Vercel Serverless)
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`[Express] Server e-commerce Jawir Garage berjalan di http://localhost:${PORT}`);
+  });
+}
+
+export default app;

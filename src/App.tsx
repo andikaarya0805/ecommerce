@@ -26,6 +26,7 @@ import { CheckoutPage } from './pages/CheckoutPage';
 import { CartPage } from './pages/CartPage';
 import { OrderHistoryPage } from './pages/OrderHistoryPage';
 import { useCart } from './context/CartContext';
+import { safeFetchJson } from './config/api';
 
 function StoreFront() {
   // Global cart & voucher state from context
@@ -57,26 +58,26 @@ function StoreFront() {
   const fetchAllData = async () => {
     try {
       const [resProd, resVouch, resCat, resBikes] = await Promise.allSettled([
-        fetch('/api/products').then((r) => r.json()),
-        fetch('/api/vouchers').then((r) => r.json()),
-        fetch('/api/categories').then((r) => r.json()),
-        fetch('/api/bikes').then((r) => r.json()),
+        safeFetchJson<Product[]>('/api/products'),
+        safeFetchJson<Voucher[]>('/api/vouchers'),
+        safeFetchJson<CategoryItem[]>('/api/categories'),
+        safeFetchJson<UserBike[]>('/api/bikes'),
       ]);
 
-      if (resProd.status === 'fulfilled' && Array.isArray(resProd.value)) {
+      if (resProd.status === 'fulfilled' && Array.isArray(resProd.value) && resProd.value.length > 0) {
         setProducts(resProd.value);
       }
-      if (resVouch.status === 'fulfilled' && Array.isArray(resVouch.value)) {
+      if (resVouch.status === 'fulfilled' && Array.isArray(resVouch.value) && resVouch.value.length > 0) {
         setVouchers(resVouch.value);
       }
-      if (resCat.status === 'fulfilled' && Array.isArray(resCat.value)) {
+      if (resCat.status === 'fulfilled' && Array.isArray(resCat.value) && resCat.value.length > 0) {
         setCategories(resCat.value);
       }
-      if (resBikes.status === 'fulfilled' && Array.isArray(resBikes.value)) {
+      if (resBikes.status === 'fulfilled' && Array.isArray(resBikes.value) && resBikes.value.length > 0) {
         setBikes(resBikes.value);
       }
     } catch (e) {
-      console.error('Fetch error:', e);
+      console.log('Fetch error fallback notice:', e);
     } finally {
       setIsLoading(false);
     }

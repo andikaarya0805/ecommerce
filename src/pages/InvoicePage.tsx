@@ -27,6 +27,7 @@ import {
   BadgePercent,
   CheckCircle2,
 } from 'lucide-react';
+import { safeFetchJson } from '../config/api';
 
 export const InvoicePage: React.FC = () => {
   const { invoiceNumber } = useParams<{ invoiceNumber: string }>();
@@ -44,11 +45,7 @@ export const InvoicePage: React.FC = () => {
   const fetchOrder = async () => {
     if (!invoiceNumber) return;
     try {
-      const res = await fetch(`/api/orders/${invoiceNumber}`);
-      if (!res.ok) {
-        throw new Error('Pesanan dengan nomor invoice tersebut tidak ditemukan.');
-      }
-      const data = await res.json();
+      const data = await safeFetchJson<any>(`/api/orders/${invoiceNumber}`);
       setOrder(data);
     } catch (err: any) {
       setError(err.message || 'Gagal mengambil rincian pesanan');
@@ -59,10 +56,9 @@ export const InvoicePage: React.FC = () => {
 
   // Load Midtrans Snap Script
   useEffect(() => {
-    fetch('/api/payment/config')
-      .then((res) => res.json())
+    safeFetchJson<any>('/api/payment/config')
       .then((cfg) => {
-        if (cfg.midtransClientKey) {
+        if (cfg?.midtransClientKey) {
           const scriptId = 'midtrans-snap-script';
           if (!document.getElementById(scriptId)) {
             const script = document.createElement('script');
@@ -75,7 +71,7 @@ export const InvoicePage: React.FC = () => {
           }
         }
       })
-      .catch((e) => console.log('Payment config load:', e));
+      .catch((e) => console.log('Payment config load notice:', e.message));
   }, []);
 
   const handleMidtransPay = () => {
@@ -158,11 +154,9 @@ export const InvoicePage: React.FC = () => {
     if (!order) return;
     setIsProcessingPay(true);
     try {
-      const res = await fetch(`/api/orders/${order.invoice_number}/pay`, {
+      await safeFetchJson(`/api/orders/${order.invoice_number}/pay`, {
         method: 'POST',
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal memproses pembayaran');
       fetchOrder();
     } catch (err: any) {
       alert('Error: ' + err.message);
@@ -176,11 +170,9 @@ export const InvoicePage: React.FC = () => {
     if (!order || !confirm('Yakin ingin membatalkan pesanan ini? Stok akan dikembalikan.')) return;
     setIsProcessingCancel(true);
     try {
-      const res = await fetch(`/api/orders/${order.invoice_number}/cancel`, {
+      await safeFetchJson(`/api/orders/${order.invoice_number}/cancel`, {
         method: 'POST',
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal membatalkan pesanan');
       fetchOrder();
     } catch (err: any) {
       alert('Error: ' + err.message);

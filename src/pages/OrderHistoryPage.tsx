@@ -23,6 +23,7 @@ import {
   Check,
   Coins
 } from 'lucide-react';
+import { safeFetchJson } from '../config/api';
 
 type TabStatus = 'ALL' | 'PENDING' | 'PAID' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
 
@@ -43,10 +44,9 @@ export const OrderHistoryPage: React.FC = () => {
 
   // Load Midtrans Snap.js script dynamically
   useEffect(() => {
-    fetch('/api/payment/config')
-      .then((res) => res.json())
+    safeFetchJson<any>('/api/payment/config')
       .then((cfg) => {
-        if (cfg.midtransClientKey) {
+        if (cfg?.midtransClientKey) {
           const scriptId = 'midtrans-snap-script';
           if (!document.getElementById(scriptId)) {
             const script = document.createElement('script');
@@ -59,7 +59,7 @@ export const OrderHistoryPage: React.FC = () => {
           }
         }
       })
-      .catch((e) => console.log('Payment config load:', e));
+      .catch((e) => console.log('Payment config notice:', e.message));
   }, []);
 
   const fetchUserOrders = async () => {
@@ -73,15 +73,17 @@ export const OrderHistoryPage: React.FC = () => {
         return;
       }
 
-      const res = await fetch('/api/user/orders', {
+      if (token.startsWith('demo-')) {
+        // In demo mode without backend, return empty list or mock order
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+
+      const data = await safeFetchJson<any[]>('/api/user/orders', {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!res.ok) {
-        throw new Error('Gagal mengambil daftar riwayat pesanan.');
-      }
-
-      const data = await res.json();
       setOrders(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.error(err);

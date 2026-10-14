@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, User, Lock, Eye, EyeOff, AlertCircle, Check, X, Flame, ChevronRight } from 'lucide-react';
+import { safeFetchJson } from '../config/api';
 
 interface PasswordRule {
   label: string;
@@ -60,14 +61,11 @@ export const LoginPage: React.FC = () => {
     const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
 
     try {
-      const res = await fetch(endpoint, {
+      const data = await safeFetchJson<any>(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Gagal autentikasi');
 
       login(data.token, data.user);
       if (data.user?.role === 'admin') {
@@ -198,7 +196,38 @@ export const LoginPage: React.FC = () => {
           {error && (
             <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/40 mb-5">
               <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-300">{error}</p>
+              <div className="space-y-2 flex-1">
+                <p className="text-sm text-red-300">{error}</p>
+                {(error.includes('404') || error.includes('terhubung') || error.includes('Network') || error.includes('bukan format JSON')) && (
+                  <div className="pt-2 border-t border-red-500/20">
+                    <p className="text-[11px] text-neutral-400 mb-2">
+                      💡 <strong>Tips:</strong> Jika backend belum aktif di hosting Anda, Anda dapat menguji aplikasi menggunakan mode demo darurat:
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          login('demo-admin-token', { id: 'u-admin', username: 'admin', role: 'admin' });
+                          navigate('/admin', { replace: true });
+                        }}
+                        className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white font-bold transition-all cursor-pointer shadow-sm"
+                      >
+                        Masuk Mode Demo (Admin)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          login('demo-user-token', { id: 'u-demo', username: username || 'demo_user', role: 'user' });
+                          navigate(from, { replace: true });
+                        }}
+                        className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium transition-all cursor-pointer border border-neutral-700"
+                      >
+                        Masuk Mode Demo (Member)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
