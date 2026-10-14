@@ -77,7 +77,7 @@ export const ClaimableVouchers: React.FC<ClaimableVouchersProps> = ({
                     className={`text-xs font-bold px-3 py-1.5 rounded transition-all flex items-center gap-1 cursor-pointer select-none ${
                       isClaimed
                         ? 'bg-neutral-800 text-neutral-400 border border-neutral-700 cursor-default'
-                        : 'bg-[#E50914] hover:bg-red-700 active:scale-95 text-white shadow-sm'
+                        : 'bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white shadow-sm'
                     }`}
                   >
                     {isClaimed ? (

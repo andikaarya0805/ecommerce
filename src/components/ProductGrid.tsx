@@ -42,9 +42,9 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   }
 
   return (
-    <section aria-label="Daftar Produk" className="p-3 sm:p-4">
-      {/* 2-Column Product Grid strictly mobile-first */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+    <section aria-label="Daftar Produk" className="px-3 sm:px-4 py-3">
+      {/* Shopee Style Responsive Product Grid (2 on mobile, 5-6 on desktop) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-2.5">
         {products.map((product) => (
           <ProductCard
             key={product.id}

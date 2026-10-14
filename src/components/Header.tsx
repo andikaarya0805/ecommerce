@@ -1,5 +1,18 @@
 import React from 'react';
-import { Search, ShoppingBag, X, Bike, Flame, Sparkles, User, Settings, Truck, Package } from 'lucide-react';
+import {
+  Search,
+  ShoppingBag,
+  X,
+  Bike,
+  Flame,
+  User,
+  Settings,
+  Truck,
+  Package,
+  Bell,
+  HelpCircle,
+  ExternalLink,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { UserBike } from '../types';
@@ -13,6 +26,15 @@ interface HeaderProps {
   onOpenGarage: () => void;
 }
 
+const POPULAR_SEARCH_TAGS = [
+  'Pulley Bubut NMAX',
+  'Mangkok Bolong Vario',
+  'Roller BRT Beat',
+  'Per CVT 1500 RPM',
+  'Master Rem Radial',
+  'Shock KTC Rebound',
+];
+
 export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   onSearchChange,
@@ -25,164 +47,174 @@ export const Header: React.FC<HeaderProps> = ({
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-40 bg-[#121212]/95 backdrop-blur-md border-b border-neutral-800 transition-all">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2.5">
-        {/* Main top row */}
-        <div className="flex items-center justify-between gap-3">
-          {/* Brand Logo & Aggressive Emblem */}
-          <div className="flex items-center gap-2 cursor-pointer select-none group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            {/* Aggressive Shield & Piston Emblem */}
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-[#1c1c1c] via-[#0d0d0d] to-black border border-neutral-700 shadow-md shadow-red-950/20 flex items-center justify-center overflow-hidden flex-shrink-0 group-hover:border-[#E50914] transition-colors">
-              <div className="absolute inset-0 bg-[radial-gradient(#E50914_1px,transparent_1px)] [background-size:8px_8px] opacity-20" />
-              <div className="absolute -top-3 -right-3 w-7 h-7 bg-[#E50914]/20 rounded-full blur-sm" />
-              {/* Emblem icon graphic */}
-              <div className="relative flex flex-col items-center justify-center">
-                <Flame className="w-5 h-5 text-[#E50914] fill-[#E50914]/40" />
-              </div>
-            </div>
-
-            {/* Typography */}
-            <div className="flex flex-col leading-none">
-              <div className="flex items-center gap-1.5">
-                <span className="font-racing font-extrabold text-base sm:text-lg tracking-wider text-white uppercase group-hover:text-red-400 transition-colors">
-                  JAWIR GARAGE
-                </span>
-                <span className="bg-[#E50914] text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-widest uppercase shadow-sm">
-                  RACING
-                </span>
-              </div>
-              <span className="text-[10px] tracking-widest text-neutral-400 font-bold uppercase mt-0.5 flex items-center gap-1">
-                <span>PLATINUM SPEEDSHOP</span>
-                <span className="w-1 h-1 rounded-full bg-[#E50914]" />
-                <span className="text-neutral-500 font-medium">EST. 2021</span>
-              </span>
-            </div>
+    <header className="sticky top-0 z-40 bg-[#0f0f0f] border-b border-neutral-800 transition-all select-none">
+      {/* Shopee Style Top Utility Bar */}
+      <div className="bg-[#080808] border-b border-neutral-850 text-neutral-400 text-[11px] py-1 px-3 sm:px-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          {/* Left mini links */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            <span className="text-neutral-300 font-semibold flex items-center gap-1">
+              <span className="bg-[#D0011B] text-white text-[9px] font-black px-1 rounded">MALL</span>
+              <span className="hidden sm:inline">Jawir Garage Platinum Speedshop</span>
+            </span>
+            <span className="hidden md:inline text-neutral-600">|</span>
+            <span className="hidden md:inline hover:text-white transition-colors cursor-pointer" onClick={onOpenGarage}>
+              {selectedBike ? `Motor Aktif: ${selectedBike.name}` : 'Pilih Motor Garasi'}
+            </span>
           </div>
 
-          {/* Right quick actions: Garage selector & Cart */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Garage / My Bike selector button */}
-            <button
-              id="header-garage-btn"
-              onClick={onOpenGarage}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
-                selectedBike
-                  ? 'bg-neutral-900 border-[#E50914]/60 text-white hover:bg-neutral-800'
-                  : 'bg-neutral-900/80 border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
-              }`}
-              title="Pilih Motor Garasi Kamu"
-            >
-              <div className="relative">
-                <Bike className="w-4 h-4 text-[#E50914]" />
-                {selectedBike && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-neutral-900" />
-                )}
-              </div>
-              <div className="hidden sm:flex flex-col text-left leading-tight">
-                <span className="text-[10px] text-neutral-400 font-normal">Garasi Saya</span>
-                <span className="text-[11px] font-bold truncate max-w-[100px] text-neutral-100">
-                  {selectedBike ? selectedBike.name : 'Pilih Motor'}
-                </span>
-              </div>
-              <span className="sm:hidden text-[11px] font-bold">
-                {selectedBike ? selectedBike.name.split(' ')[1] || 'Motor' : 'Motor'}
-              </span>
-            </button>
-
-            {/* Pesanan Saya (Shopee Style Order History) Button */}
+          {/* Right mini links */}
+          <div className="flex items-center gap-3 sm:gap-4 font-medium">
             <button
               onClick={() => navigate('/orders')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#EE4D2D] text-xs font-semibold transition-all"
-              title="Riwayat Pesanan Saya"
+              className="hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
             >
-              <Package className="w-4 h-4 text-[#EE4D2D]" />
-              <span className="hidden md:inline">Pesanan Saya</span>
+              <Package className="w-3.5 h-3.5 text-[#D0011B]" />
+              <span>Pesanan Saya</span>
             </button>
 
-            {/* Track Order Button */}
             <button
               onClick={() => navigate('/track-order')}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#EE4D2D] text-xs font-semibold transition-all"
-              title="Lacak Status Pesanan & Resi"
+              className="hidden sm:flex hover:text-white items-center gap-1 transition-colors cursor-pointer"
             >
-              <Truck className="w-4 h-4 text-[#EE4D2D]" />
+              <Truck className="w-3.5 h-3.5 text-neutral-400" />
               <span>Lacak Resi</span>
             </button>
 
-            {/* Auth Buttons */}
+            <span className="text-neutral-600">|</span>
+
+            {/* Auth status */}
             {user ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-white font-bold flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-[#D0011B]" />
+                  <span>@{user.username}</span>
+                </span>
                 {user.role === 'admin' && (
                   <button
                     onClick={() => navigate('/admin')}
-                    className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200 hover:text-white hover:border-[#E50914] transition-all"
-                    title="Admin Panel"
+                    className="text-amber-400 hover:text-amber-300 font-bold ml-1 cursor-pointer"
                   >
-                    <Settings className="w-5 h-5 text-neutral-200" />
+                    [Admin]
                   </button>
                 )}
                 <button
                   onClick={logout}
-                  className="hidden sm:flex px-3 py-1.5 rounded-lg border border-red-500/50 text-xs font-bold text-red-400 hover:bg-red-500 hover:text-white transition-colors"
+                  className="text-red-400 hover:text-red-300 ml-1 cursor-pointer"
                 >
-                  Logout
+                  (Logout)
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => navigate('/login')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#E50914] text-white text-xs font-bold hover:bg-red-700 transition-colors"
-              >
-                <User className="w-4 h-4" />
-                <span className="hidden sm:inline">Login</span>
-              </button>
+              <div className="flex items-center gap-2 font-bold">
+                <button
+                  onClick={() => navigate('/login')}
+                  className="text-white hover:text-red-400 transition-colors cursor-pointer"
+                >
+                  Daftar
+                </button>
+                <span className="text-neutral-600">|</span>
+                <button
+                  onClick={() => navigate('/login')}
+                  className="text-white hover:text-red-400 transition-colors cursor-pointer"
+                >
+                  Login
+                </button>
+              </div>
             )}
+          </div>
+        </div>
+      </div>
 
-            {/* Cart Button with Counter */}
+      {/* Shopee Style Main Header Row */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {/* Brand Logo with MALL Badge */}
+          <div
+            className="flex items-center gap-2 cursor-pointer select-none group flex-shrink-0"
+            onClick={() => {
+              onSearchChange('');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          >
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-[#D0011B] via-red-800 to-black flex items-center justify-center shadow-lg shadow-red-950/40">
+              <Flame className="w-5 h-5 text-white fill-white/20" />
+            </div>
+
+            <div className="flex flex-col leading-none">
+              <div className="flex items-center gap-1.5">
+                <span className="font-racing font-extrabold text-lg sm:text-xl tracking-wider text-white uppercase group-hover:text-red-400 transition-colors">
+                  JAWIR GARAGE
+                </span>
+                <span className="bg-[#D0011B] text-white text-[9px] font-black px-1.5 py-0.5 rounded tracking-wider uppercase shadow-sm">
+                  MALL
+                </span>
+              </div>
+              <span className="text-[10px] tracking-widest text-neutral-400 font-bold uppercase mt-0.5">
+                OFFICIAL SPEEDSHOP
+              </span>
+            </div>
+          </div>
+
+          {/* Shopee Style Wide Search Box */}
+          <div className="flex-1 max-w-2xl relative">
+            <div className="relative flex items-center bg-white rounded-md p-1 shadow-md">
+              <input
+                id="smart-search-input"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Cari part di Jawir Garage Official Mall..."
+                className="w-full px-3 py-1.5 text-xs sm:text-sm text-neutral-900 placeholder-neutral-500 bg-transparent focus:outline-none"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => onSearchChange('')}
+                  className="text-neutral-400 hover:text-neutral-700 p-1 mr-1"
+                  aria-label="Hapus Pencarian"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {/* Shopee iconic Orange/Red Search Button */}
+              <button
+                className="bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white px-4 sm:px-6 py-2 rounded font-bold flex items-center justify-center transition-all cursor-pointer"
+                title="Cari"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Popular Search Tags Underneath Search Bar (Iconic Shopee feature) */}
+            <div className="hidden sm:flex items-center gap-2 mt-1.5 overflow-x-auto no-scrollbar text-[11px] text-neutral-400">
+              {POPULAR_SEARCH_TAGS.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => onSearchChange(tag)}
+                  className="hover:text-red-400 transition-colors truncate whitespace-nowrap cursor-pointer"
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Shopee Shopping Cart Icon with Badge */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               id="header-cart-btn"
               onClick={onOpenCart}
-              className="relative p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200 hover:text-white hover:border-[#E50914] transition-all"
+              className="relative p-2.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-[#D0011B] text-white transition-all cursor-pointer group"
               aria-label="Keranjang Belanja"
             >
-              <ShoppingBag className="w-5 h-5 text-neutral-200" />
+              <ShoppingBag className="w-6 h-6 text-neutral-100 group-hover:text-red-400 transition-colors" />
               {cartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-[#E50914] text-white text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border-2 border-[#121212] shadow-lg animate-bounce">
+                <span className="absolute -top-1.5 -right-1.5 bg-[#D0011B] text-white text-[11px] font-black min-w-[20px] h-[20px] px-1 rounded-full flex items-center justify-center border-2 border-[#0f0f0f] shadow-lg animate-bounce">
                   {cartCount > 99 ? '99+' : cartCount}
                 </span>
               )}
             </button>
           </div>
-        </div>
-
-        {/* Smart Search Input Box */}
-        <div className="mt-2.5 relative">
-          <div className="relative flex items-center">
-            <Search className="absolute left-3 w-4 h-4 text-neutral-500 pointer-events-none" />
-            <input
-              id="smart-search-input"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Cari sparepart, CVT, velg, atau tipe motor..."
-              className="w-full pl-9 pr-8 py-2 bg-neutral-900/90 border border-neutral-800 rounded-lg text-xs sm:text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-[#E50914] focus:ring-1 focus:ring-[#E50914] transition-all"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => onSearchChange('')}
-                className="absolute right-2.5 text-neutral-400 hover:text-white p-0.5"
-                aria-label="Hapus Pencarian"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          {searchQuery && (
-            <div className="absolute right-3 top-2.5 pointer-events-none hidden sm:flex items-center gap-1 text-[10px] text-neutral-400">
-              <Sparkles className="w-3 h-3 text-[#E50914]" />
-              <span>Filter aktif</span>
-            </div>
-          )}
         </div>
       </div>
     </header>

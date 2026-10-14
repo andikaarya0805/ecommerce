@@ -4,6 +4,7 @@ import { CategoryItem } from './components/VerticalCategoryList';
 import { INITIAL_PRODUCTS, CATEGORY_ITEMS } from './data/products';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { Header } from './components/Header';
+import { ShopeeStoreHeader } from './components/ShopeeStoreHeader';
 import { HeroBannerCarousel } from './components/HeroBannerCarousel';
 import { ClaimableVouchers } from './components/ClaimableVouchers';
 import { CategoryNavTabs } from './components/CategoryNavTabs';
@@ -235,6 +236,15 @@ function StoreFront() {
         onOpenGarage={() => setIsGarageModalOpen(true)}
       />
 
+      {/* Shopee Official Store Profile Banner & Tabs */}
+      <ShopeeStoreHeader
+        totalProducts={products.length}
+        selectedBike={userBike}
+        onOpenGarage={() => setIsGarageModalOpen(true)}
+        activeStoreTab={activeTab}
+        onSelectStoreTab={(tab: any) => setActiveTab(tab)}
+      />
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto">
         {/* Dynamic Promotional Hero Carousel */}
@@ -248,13 +258,6 @@ function StoreFront() {
           onClaimVoucher={handleClaimVoucher}
         />
 
-        {/* Main Category Filter Sticky Tabs */}
-        <CategoryNavTabs
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          paketCount={products.filter((p) => p.isPaketUpgrade).length}
-          promoCount={products.filter((p) => p.isPromo).length}
-        />
 
         {/* Dynamic View: If tab is 'kategori', show VerticalCategoryList; otherwise show products grid */}
         {activeTab === 'kategori' ? (
