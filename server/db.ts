@@ -42,6 +42,7 @@ function createInMemoryDb() {
       isPromo: p.isPromo ? 1 : 0,
       isPaketUpgrade: p.isPaketUpgrade ? 1 : 0,
       variation_groups: p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+      bike_variants: p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
       weight_grams: p.weight_grams || 500,
       is_active: 1,
       created_at: new Date().toISOString(),
@@ -663,6 +664,7 @@ export function initDb() {
     ensureColumn('orders', 'destination_area_id', 'TEXT');
     ensureColumn('orders', 'customer_notes', 'TEXT');
     ensureColumn('products', 'variation_groups', 'TEXT');
+    ensureColumn('products', 'bike_variants', 'TEXT');
 
     try {
       const prods = db.prepare('SELECT id, name, slug FROM products').all() as any[];
@@ -676,6 +678,14 @@ export function initDb() {
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-|-$/g, '');
           updateSlug.run(slug, p.id);
+        }
+      }
+      const updateVariants = db.prepare(
+        'UPDATE products SET bike_variants = ? WHERE id = ? AND (bike_variants IS NULL OR bike_variants = "[]")'
+      );
+      for (const p of INITIAL_PRODUCTS) {
+        if (p.bikeVariants) {
+          updateVariants.run(JSON.stringify(p.bikeVariants), p.id);
         }
       }
     } catch (e) {

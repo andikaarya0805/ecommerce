@@ -289,6 +289,7 @@ app.get('/api/products', (req, res) => {
     ...p,
     specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
     variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
+    bikeVariants: typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants || '[]') : (p.bikeVariants || undefined),
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility: getCompat.all(p.id).map((c: any) => c.bike_type),
@@ -312,6 +313,7 @@ app.get('/api/products/:slugOrId', (req, res) => {
     ...p,
     specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
     variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
+    bikeVariants: typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants || '[]') : (p.bikeVariants || undefined),
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility,
@@ -1272,6 +1274,7 @@ app.get('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res: 
       ...p,
       specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
       variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
+      bikeVariants: typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants || '[]') : (p.bikeVariants || undefined),
       isPromo: p.isPromo === 1,
       isPaketUpgrade: p.isPaketUpgrade === 1,
       isActive: p.is_active === 1,
@@ -1293,8 +1296,8 @@ app.post('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res:
       INSERT INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
         discountPercent, promoTag, rating, soldCount, image, description, specs,
-        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, bike_variants, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       p.name,
@@ -1317,6 +1320,7 @@ app.post('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res:
       p.weight_grams || 500,
       p.originCity || 'Jakarta Timur',
       p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+      p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
       p.isActive !== false ? 1 : 0
     );
 
@@ -1343,7 +1347,7 @@ app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, r
         name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
         price = ?, originalPrice = ?, discountPercent = ?, promoTag = ?,
         image = ?, description = ?, specs = ?, isPromo = ?, isPaketUpgrade = ?,
-        stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, is_active = ?
+        stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, bike_variants = ?, is_active = ?
       WHERE id = ?
     `).run(
       p.name,
@@ -1363,6 +1367,7 @@ app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, r
       p.weight_grams || 500,
       p.originCity || 'Jakarta Timur',
       p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+      p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
       p.isActive !== false ? 1 : 0,
       id
     );

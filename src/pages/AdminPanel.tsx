@@ -44,6 +44,21 @@ const BIKE_OPTIONS = [
   { id: 'sport-bebek', label: 'Sport & Bebek' },
 ];
 
+const POPULAR_BIKE_VARIANTS_SUGGESTIONS = [
+  'Vario 125 / 150',
+  'Vario 160 / PCX 160',
+  'PCX 150',
+  'All New NMAX / Aerox 155 Connected',
+  'Old NMAX / Lexi 125',
+  'Beat ESP / Deluxe / Street',
+  'Beat Karbu / Scoopy Karbu',
+  'Scoopy Fi / Genio',
+  'Mio Sporty / Smile 5TL',
+  'Mio M3 / Fazzio 125',
+  'Ninja 150 R/RR',
+  'Universal Semua Motor',
+];
+
 const PROMO_TAG_PRESETS = [
   'MALL',
   'Best Seller',
@@ -83,6 +98,8 @@ export const AdminPanel: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [specRows, setSpecRows] = useState<{ key: string; value: string }[]>([]);
   const [varGroups, setVarGroups] = useState<{ name: string; optionsStr: string }[]>([]);
+  const [bikeVariantsList, setBikeVariantsList] = useState<string[]>([]);
+  const [newBikeVariantInput, setNewBikeVariantInput] = useState<string>('');
 
   // Vouchers CMS State
   const [vouchers, setVouchers] = useState<any[]>([]);
@@ -239,12 +256,38 @@ export const AdminPanel: React.FC = () => {
       { key: 'Garansi', value: '1 Bulan Tukar Baru' },
     ]);
 
-    const groups = (p.variationGroups || []).map((g: any) => ({
-      name: g.name || '',
-      optionsStr: Array.isArray(g.options)
-        ? g.options.map((opt: any) => (typeof opt === 'string' ? opt : opt.name)).join(', ')
-        : '',
-    }));
+    // Extract bikeVariantsList
+    let initialBikes: string[] = [];
+    if (Array.isArray(p.bikeVariants) && p.bikeVariants.length > 0) {
+      initialBikes = [...p.bikeVariants];
+    } else if (Array.isArray(p.variationGroups)) {
+      const motorGroup = p.variationGroups.find((g: any) =>
+        g.name.toLowerCase().includes('motor') || g.name.toLowerCase().includes('tipe')
+      );
+      if (motorGroup && Array.isArray(motorGroup.options)) {
+        initialBikes = motorGroup.options.map((opt: any) => (typeof opt === 'string' ? opt : opt.name));
+      }
+    }
+    if (initialBikes.length === 0 && p.bikeCompatibility) {
+      const compat = p.bikeCompatibility || [];
+      if (compat.includes('vario-pcx')) initialBikes.push('Vario 125 / 150', 'Vario 160 / PCX 160');
+      if (compat.includes('nmax-aerox')) initialBikes.push('All New NMAX / Aerox 155', 'Old NMAX / Lexi 125');
+      if (compat.includes('beat-scoopy')) initialBikes.push('Beat ESP / Deluxe / Street', 'Scoopy / Genio');
+      if (compat.includes('mio-series')) initialBikes.push('Mio Sporty / Smile 5TL', 'Mio M3 / Fazzio 125');
+      if (compat.includes('sport-bebek')) initialBikes.push('Ninja 150/250 / CBR / R15', 'Satria F / Sonic / MX King');
+    }
+    setBikeVariantsList(Array.from(new Set(initialBikes)));
+    setNewBikeVariantInput('');
+
+    // For secondary varGroups, exclude motor group to prevent duplicate
+    const groups = (p.variationGroups || [])
+      .filter((g: any) => !g.name.toLowerCase().includes('motor') && !g.name.toLowerCase().includes('tipe motor'))
+      .map((g: any) => ({
+        name: g.name || '',
+        optionsStr: Array.isArray(g.options)
+          ? g.options.map((opt: any) => (typeof opt === 'string' ? opt : opt.name)).join(', ')
+          : '',
+      }));
     setVarGroups(groups);
 
     setIsProductModalOpen(true);
@@ -279,10 +322,9 @@ export const AdminPanel: React.FC = () => {
       { key: 'Garansi', value: '1 Bulan Tukar Baru' },
     ]);
 
-    setVarGroups([
-      { name: 'Pilihan Varian', optionsStr: 'Standard Racing, High Spec 13.5 Derajat' },
-      { name: 'Berat Roller', optionsStr: '9 Gram, 10 Gram, 11 Gram, 12 Gram' },
-    ]);
+    setBikeVariantsList(['Vario 125 / 150', 'Vario 160 / PCX 160']);
+    setNewBikeVariantInput('');
+    setVarGroups([]);
 
     setIsProductModalOpen(true);
   };
@@ -301,13 +343,22 @@ export const AdminPanel: React.FC = () => {
         }
       }
 
-      const cleanVariationGroups = varGroups
+      const cleanOtherVariationGroups = varGroups
         .filter((g) => g.name.trim() !== '')
         .map((g) => ({
           name: g.name.trim(),
           options: g.optionsStr.split(',').map((s) => s.trim()).filter(Boolean),
         }))
         .filter((g) => g.options.length > 0);
+
+      const finalVariationGroups: any[] = [];
+      if (bikeVariantsList.length > 0) {
+        finalVariationGroups.push({
+          name: 'Tipe Motor / Varian',
+          options: [...bikeVariantsList],
+        });
+      }
+      finalVariationGroups.push(...cleanOtherVariationGroups);
 
       const priceNum = Math.max(0, parseInt(editingProduct.price) || 0);
       const origPriceNum = editingProduct.originalPrice ? Math.max(0, parseInt(editingProduct.originalPrice) || 0) : null;
@@ -325,8 +376,9 @@ export const AdminPanel: React.FC = () => {
         weight_grams: Math.max(10, parseInt(editingProduct.weight_grams) || 500),
         originCity: editingProduct.originCity || 'Jakarta Timur',
         bikeCompatibility: editingProduct.bikeCompatibility || [],
+        bikeVariants: bikeVariantsList,
         specs: specsObj,
-        variationGroups: cleanVariationGroups,
+        variationGroups: finalVariationGroups,
       };
 
       const res = await fetch(url, {
@@ -1504,18 +1556,32 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
 
-              {/* SECTION 2: Kesesuaian Tipe Motor */}
-              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
-                <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#E50914]" />
-                  Kesesuaian Motor (Bike Compatibility Filter)
-                </span>
+              {/* SECTION 2: Kesesuaian Tipe Motor & Kelola Varian Manual */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-[#E50914]" />
+                      Kesesuaian Motor & Kelola Varian Tipe Motor Manual
+                    </span>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                      Tentukan motor apa saja yang kompatibel dengan part ini. Varian yang ada di sini akan langsung menjadi tombol pilihan variasi motor di Shopee saat pembeli checkout.
+                    </p>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-1 rounded font-mono font-bold bg-[#E50914]/20 border border-[#E50914]/40 text-[#E50914] flex-shrink-0">
+                    {bikeVariantsList.length} Varian Motor Aktif
+                  </span>
+                </div>
 
-                <div>
-                  <label className="block text-neutral-300 font-bold mb-1.5">
-                    Pilih Kategori Motor (Bisa Lebih Dari Satu)
+                {/* Sub-section A: Filter Kategori Garasi */}
+                <div className="p-3 rounded-lg bg-black/50 border border-neutral-800 space-y-2">
+                  <label className="block text-xs font-bold text-neutral-300">
+                    1. Kategori Filter Etalase (Sub-Bar Motor)
                   </label>
-                  <div className="flex flex-wrap gap-2">
+                  <p className="text-[10px] text-neutral-500">
+                    Pilih kategori umum agar produk ini muncul saat pembeli memfilter berdasarkan tipe motor di etalase:
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
                     {BIKE_OPTIONS.map((b) => {
                       const isSelected = (editingProduct.bikeCompatibility || []).includes(b.id);
                       return (
@@ -1527,10 +1593,10 @@ export const AdminPanel: React.FC = () => {
                             const next = isSelected ? cur.filter((x: string) => x !== b.id) : [...cur, b.id];
                             setEditingProduct({ ...editingProduct, bikeCompatibility: next });
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                             isSelected
                               ? 'bg-[#E50914] text-white shadow-md shadow-red-950/40 border border-red-500'
-                              : 'bg-black text-neutral-400 border border-neutral-700 hover:text-white'
+                              : 'bg-neutral-900 text-neutral-400 border border-neutral-700 hover:text-white'
                           }`}
                         >
                           {isSelected && <Check className="w-3.5 h-3.5" />}
@@ -1541,16 +1607,165 @@ export const AdminPanel: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Sub-section B: Input Varian Motor Manual (Shopee Chips) */}
+                <div className="p-3.5 rounded-lg bg-black/60 border border-neutral-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-bold text-white flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>2. Opsi Pilihan Varian Motor (Shopee Chips/Pills)</span>
+                      </label>
+                      <p className="text-[10px] text-neutral-400">
+                        Input manual motor yang spesifik. Tidak semua part tersedia di semua motor, masukkan hanya yang cocok untuk part ini.
+                      </p>
+                    </div>
+
+                    {bikeVariantsList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setBikeVariantsList([])}
+                        className="text-[11px] text-red-400 hover:text-red-300 font-bold transition-colors cursor-pointer"
+                      >
+                        Reset / Kosongkan
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Manual Input Form */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Ketik nama varian motor (misal: Vario 160 ABS, Beat Karbu, Aerox 155 New) lalu tekan Enter"
+                      value={newBikeVariantInput}
+                      onChange={(e) => setNewBikeVariantInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = newBikeVariantInput.trim();
+                          if (val && !bikeVariantsList.includes(val)) {
+                            setBikeVariantsList([...bikeVariantsList, val]);
+                            setNewBikeVariantInput('');
+                          }
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs placeholder:text-neutral-500 focus:outline-none focus:border-[#E50914]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newBikeVariantInput.trim();
+                        if (val && !bikeVariantsList.includes(val)) {
+                          setBikeVariantsList([...bikeVariantsList, val]);
+                          setNewBikeVariantInput('');
+                        }
+                      }}
+                      disabled={!newBikeVariantInput.trim()}
+                      className="px-3.5 py-2 rounded-lg bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah</span>
+                    </button>
+                  </div>
+
+                  {/* Quick Suggestion Templates */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-neutral-400 font-medium block">
+                        ⚡ Saran Cepat (Klik untuk menambah / menghapus):
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const autoList: string[] = [];
+                          const compat = editingProduct.bikeCompatibility || [];
+                          if (compat.includes('vario-pcx')) autoList.push('Vario 125 / 150', 'Vario 160 / PCX 160');
+                          if (compat.includes('nmax-aerox')) autoList.push('All New NMAX / Aerox 155 Connected', 'Old NMAX / Lexi 125');
+                          if (compat.includes('beat-scoopy')) autoList.push('Beat ESP / Deluxe / Street', 'Scoopy Fi / Genio');
+                          if (compat.includes('mio-series')) autoList.push('Mio Sporty / Smile 5TL', 'Mio M3 / Fazzio 125');
+                          if (compat.includes('sport-bebek')) autoList.push('Ninja 150 R/RR', 'Satria F / Sonic / MX King');
+                          if (autoList.length === 0) autoList.push('Universal Semua Motor');
+                          setBikeVariantsList(Array.from(new Set([...bikeVariantsList, ...autoList])));
+                        }}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 font-bold transition-colors cursor-pointer"
+                      >
+                        + Isi Cepat Sesuai Kategori
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto no-scrollbar">
+                      {POPULAR_BIKE_VARIANTS_SUGGESTIONS.map((sug, i) => {
+                        const isAlreadyAdded = bikeVariantsList.includes(sug);
+                        return (
+                          <button
+                            type="button"
+                            key={i}
+                            onClick={() => {
+                              if (isAlreadyAdded) {
+                                setBikeVariantsList(bikeVariantsList.filter((x) => x !== sug));
+                              } else {
+                                setBikeVariantsList([...bikeVariantsList, sug]);
+                              }
+                            }}
+                            className={`text-[10px] px-2.5 py-1 rounded-full border transition-all cursor-pointer ${
+                              isAlreadyAdded
+                                ? 'bg-emerald-950/80 border-emerald-500/70 text-emerald-300 font-bold shadow-sm'
+                                : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-700 text-neutral-300'
+                            }`}
+                          >
+                            {isAlreadyAdded ? `✓ ${sug}` : `+ ${sug}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Active Variants Pills Display */}
+                  <div className="pt-2 border-t border-neutral-850">
+                    <span className="text-[11px] font-bold text-neutral-300 block mb-1.5">
+                      Varian Motor yang Akan Muncul di Tombol Shopee ({bikeVariantsList.length}):
+                    </span>
+
+                    {bikeVariantsList.length === 0 ? (
+                      <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/50 text-amber-300 text-xs flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                        <span>
+                          Belum ada varian motor spesifik. Part ini akan menggunakan varian default sistem. Klik saran di atas atau ketik varian motor yang tersedia.
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                        {bikeVariantsList.map((variant, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-[#E50914]/20 border border-[#E50914]/50 text-red-200 font-bold shadow-sm"
+                          >
+                            <span>{variant}</span>
+                            <button
+                              type="button"
+                              onClick={() => setBikeVariantsList(bikeVariantsList.filter((_, i) => i !== idx))}
+                              className="text-neutral-400 hover:text-white p-0.5 rounded-full hover:bg-red-800/60 cursor-pointer transition-colors"
+                              title="Hapus varian ini"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Sub-section C: Teks Detail Kompatibilitas */}
                 <div>
-                  <label className="block text-neutral-300 font-bold mb-1">
-                    Teks Detail Kompatibilitas Motor
+                  <label className="block text-xs font-bold text-neutral-300 mb-1">
+                    3. Teks Ringkas Kompatibilitas (Tampil di kartu & detail)
                   </label>
                   <input
                     type="text"
-                    placeholder="Contoh: Vario 125/150/160, PCX 150/160, Beat ESP, Scoopy Karbu"
+                    placeholder="Contoh: Vario 160, PCX 160, All New NMAX 2020-2024"
                     value={editingProduct.compatibilityText || ''}
                     onChange={(e) => setEditingProduct({ ...editingProduct, compatibilityText: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914]"
                   />
                 </div>
               </div>

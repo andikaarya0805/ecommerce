@@ -272,7 +272,8 @@ export const INITIAL_PRODUCTS: any[] = [
     isPaketUpgrade: false,
     stock: 10,
     originCity: 'Jakarta Timur',
-    bikeCompatibility: ['vario-pcx', 'nmax-aerox']
+    bikeCompatibility: ['vario-pcx', 'nmax-aerox'],
+    bikeVariants: ['Vario 160 / PCX 160', 'All New NMAX / Aerox 155 Connected']
   },
   {
     id: 'prod-5',

@@ -46,6 +46,7 @@ export interface Product {
   is_active?: boolean;
   created_at?: string;
   variationGroups?: ProductVariationGroup[];
+  bikeVariants?: string[];
 }
 
 export interface Voucher {
