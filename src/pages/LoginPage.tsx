@@ -70,7 +70,11 @@ export const LoginPage: React.FC = () => {
       if (!res.ok) throw new Error(data.error || 'Gagal autentikasi');
 
       login(data.token, data.user);
-      navigate(from, { replace: true });
+      if (data.user?.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {

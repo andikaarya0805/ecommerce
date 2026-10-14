@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ShoppingBag, X, Bike, Flame, Sparkles, User, Settings } from 'lucide-react';
+import { Search, ShoppingBag, X, Bike, Flame, Sparkles, User, Settings, Truck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { UserBike } from '../types';
@@ -87,6 +87,16 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="sm:hidden text-[11px] font-bold">
                 {selectedBike ? selectedBike.name.split(' ')[1] || 'Motor' : 'Motor'}
               </span>
+            </button>
+
+            {/* Track Order Button */}
+            <button
+              onClick={() => navigate('/track-order')}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-[#E50914] text-xs font-semibold transition-all"
+              title="Lacak Status Pesanan & Resi"
+            >
+              <Truck className="w-4 h-4 text-[#E50914]" />
+              <span>Lacak Resi</span>
             </button>
 
             {/* Auth Buttons */}

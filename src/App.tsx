@@ -19,6 +19,8 @@ import { ToastContainer, ToastMessage } from './components/Toast';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { AdminPanel } from './pages/AdminPanel';
+import { InvoicePage } from './pages/InvoicePage';
+import { TrackOrderPage } from './pages/TrackOrderPage';
 
 function StoreFront() {
   // State variables
@@ -346,6 +348,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<StoreFront />} />
+      <Route path="/orders/:invoiceNumber" element={<InvoicePage />} />
+      <Route path="/track-order" element={<TrackOrderPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<LoginPage />} />
       <Route path="/admin" element={<AdminPanel />} />

@@ -162,9 +162,16 @@ export const FooterTrustBadges: React.FC = () => {
         </div>
       </div>
 
-      {/* Copyright Bar */}
-      <div className="border-t border-neutral-800/80 bg-black py-3 px-4 text-center text-[10px] text-neutral-500">
-        <p>© 2026 Platinum Racing by Jawir Garage Speedshop. Semua hak dilindungi undang-undang.</p>
+      {/* Copyright & Quick Links Bar */}
+      <div className="border-t border-neutral-800/80 bg-black py-4 px-4 text-center text-[11px] text-neutral-500 space-y-2">
+        <div className="flex flex-wrap items-center justify-center gap-4 text-neutral-400 font-semibold">
+          <a href="/track-order" className="hover:text-white transition-colors">Lacak Status Pesanan</a>
+          <span>•</span>
+          <a href="/login" className="hover:text-white transition-colors">Portal Member / Admin</a>
+          <span>•</span>
+          <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Bantuan Customer Service</a>
+        </div>
+        <p>© 2026 Platinum Racing by Jawir Garage Speedshop. D2C Architecture & Database Atomic Transaction.</p>
       </div>
     </footer>
   );
