@@ -105,4 +105,121 @@ export async function checkSupabaseHealth(): Promise<{
   }
 }
 
+export function mapSupabaseProduct(p: any) {
+  if (!p) return null;
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    category: p.category,
+    compatibilityText: p.compatibility_text || p.compatibilityText || '',
+    fitmentTag: p.fitment_tag || p.fitmentTag || 'Plug & Play (PnP)',
+    price: Number(p.price || 0),
+    originalPrice: p.original_price != null ? Number(p.original_price) : undefined,
+    discountPercent: p.discount_percent != null ? Number(p.discount_percent) : 0,
+    promoTag: p.promo_tag || p.promoTag || '',
+    rating: Number(p.rating || 5.0),
+    soldCount: Number(p.sold_count || p.soldCount || 0),
+    image: p.image,
+    description: p.description,
+    specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs || {},
+    isPromo: Boolean(p.is_promo ?? p.isPromo),
+    isPaketUpgrade: Boolean(p.is_paket_upgrade ?? p.isPaketUpgrade),
+    stock: Number(p.stock || 0),
+    weight_grams: Number(p.weight_grams || 500),
+    originCity: p.origin_city || p.originCity || 'Jakarta Timur',
+    isActive: Boolean(p.is_active ?? p.isActive ?? true),
+    created_at: p.created_at,
+    variationGroups: p.variation_groups
+      ? typeof p.variation_groups === 'string'
+        ? JSON.parse(p.variation_groups)
+        : p.variation_groups
+      : undefined,
+    bikeVariants: p.bike_variants
+      ? typeof p.bike_variants === 'string'
+        ? JSON.parse(p.bike_variants)
+        : p.bike_variants
+      : undefined,
+    bikeCompatibility: p.bikeCompatibility || [],
+  };
+}
+
+export function mapSupabaseVoucher(v: any) {
+  if (!v) return null;
+  return {
+    id: v.id,
+    code: v.code,
+    title: v.title,
+    subtitle: v.subtitle,
+    discount_type: v.discount_type || 'FIXED',
+    discount_value: Number(v.discount_value || 0),
+    minSpend: Number(v.min_purchase_amount ?? v.minSpend ?? 0),
+    max_discount_amount: v.max_discount_amount != null ? Number(v.max_discount_amount) : undefined,
+    discountAmount: Number(v.discount_value || 0),
+    quota: Number(v.quota || 100),
+    used_count: Number(v.used_count || 0),
+    expiryText: v.valid_until ? `Berlaku hingga ${new Date(v.valid_until).toLocaleDateString('id-ID')}` : 'Promo Aktif',
+    badge: v.badge || 'Promo Jawir',
+    claimed: Boolean(v.claimed),
+    is_active: v.is_active ? 1 : 0,
+  };
+}
+
+export async function syncFromSupabase(targetDb: any) {
+  if (!isSupabaseConfigured() || !client) return;
+
+  try {
+    // 1. Sync Users from Supabase
+    const { data: users, error: uErr } = await client.from('users').select('*');
+    if (!uErr && users && users.length > 0) {
+      for (const u of users) {
+        try {
+          const existing = targetDb.prepare('SELECT id FROM users WHERE username = ?').get(u.username);
+          if (!existing) {
+            targetDb.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+              u.id,
+              u.username,
+              u.password_hash,
+              u.role || 'user'
+            );
+          }
+        } catch (e) {}
+      }
+      console.log(`[Supabase] Synced ${users.length} users into local engine.`);
+    }
+
+    // 2. Sync Products from Supabase
+    const { data: prods, error: pErr } = await client.from('products').select('*');
+    if (!pErr && prods && prods.length > 0) {
+      for (const p of prods) {
+        try {
+          const mapped = mapSupabaseProduct(p);
+          if (!mapped) continue;
+          const existing = targetDb.prepare('SELECT id FROM products WHERE id = ?').get(mapped.id);
+          if (!existing) {
+            targetDb.prepare(`
+              INSERT INTO products (
+                id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
+                discountPercent, promoTag, rating, soldCount, image, description, specs,
+                isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              mapped.id, mapped.name, mapped.slug, mapped.category, mapped.compatibilityText,
+              mapped.fitmentTag, mapped.price, mapped.originalPrice || null, mapped.discountPercent || null,
+              mapped.promoTag || null, mapped.rating, mapped.soldCount, mapped.image, mapped.description,
+              JSON.stringify(mapped.specs), mapped.isPromo ? 1 : 0, mapped.isPaketUpgrade ? 1 : 0,
+              mapped.stock, mapped.weight_grams, mapped.originCity,
+              mapped.variationGroups ? JSON.stringify(mapped.variationGroups) : null,
+              mapped.isActive ? 1 : 0
+            );
+          }
+        } catch (e) {}
+      }
+      console.log(`[Supabase] Synced ${prods.length} products into local engine.`);
+    }
+  } catch (err) {
+    console.warn('[Supabase] Initial sync notice:', err);
+  }
+}
+
 export const supabase = client;

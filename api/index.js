@@ -1218,6 +1218,106 @@ async function checkSupabaseHealth() {
     };
   }
 }
+function mapSupabaseProduct(p) {
+  if (!p) return null;
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    category: p.category,
+    compatibilityText: p.compatibility_text || p.compatibilityText || "",
+    fitmentTag: p.fitment_tag || p.fitmentTag || "Plug & Play (PnP)",
+    price: Number(p.price || 0),
+    originalPrice: p.original_price != null ? Number(p.original_price) : void 0,
+    discountPercent: p.discount_percent != null ? Number(p.discount_percent) : 0,
+    promoTag: p.promo_tag || p.promoTag || "",
+    rating: Number(p.rating || 5),
+    soldCount: Number(p.sold_count || p.soldCount || 0),
+    image: p.image,
+    description: p.description,
+    specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs || {},
+    isPromo: Boolean(p.is_promo ?? p.isPromo),
+    isPaketUpgrade: Boolean(p.is_paket_upgrade ?? p.isPaketUpgrade),
+    stock: Number(p.stock || 0),
+    weight_grams: Number(p.weight_grams || 500),
+    originCity: p.origin_city || p.originCity || "Jakarta Timur",
+    isActive: Boolean(p.is_active ?? p.isActive ?? true),
+    created_at: p.created_at,
+    variationGroups: p.variation_groups ? typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups) : p.variation_groups : void 0,
+    bikeVariants: p.bike_variants ? typeof p.bike_variants === "string" ? JSON.parse(p.bike_variants) : p.bike_variants : void 0,
+    bikeCompatibility: p.bikeCompatibility || []
+  };
+}
+async function syncFromSupabase(targetDb) {
+  if (!isSupabaseConfigured() || !client) return;
+  try {
+    const { data: users, error: uErr } = await client.from("users").select("*");
+    if (!uErr && users && users.length > 0) {
+      for (const u of users) {
+        try {
+          const existing = targetDb.prepare("SELECT id FROM users WHERE username = ?").get(u.username);
+          if (!existing) {
+            targetDb.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+              u.id,
+              u.username,
+              u.password_hash,
+              u.role || "user"
+            );
+          }
+        } catch (e) {
+        }
+      }
+      console.log(`[Supabase] Synced ${users.length} users into local engine.`);
+    }
+    const { data: prods, error: pErr } = await client.from("products").select("*");
+    if (!pErr && prods && prods.length > 0) {
+      for (const p of prods) {
+        try {
+          const mapped = mapSupabaseProduct(p);
+          if (!mapped) continue;
+          const existing = targetDb.prepare("SELECT id FROM products WHERE id = ?").get(mapped.id);
+          if (!existing) {
+            targetDb.prepare(`
+              INSERT INTO products (
+                id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
+                discountPercent, promoTag, rating, soldCount, image, description, specs,
+                isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              mapped.id,
+              mapped.name,
+              mapped.slug,
+              mapped.category,
+              mapped.compatibilityText,
+              mapped.fitmentTag,
+              mapped.price,
+              mapped.originalPrice || null,
+              mapped.discountPercent || null,
+              mapped.promoTag || null,
+              mapped.rating,
+              mapped.soldCount,
+              mapped.image,
+              mapped.description,
+              JSON.stringify(mapped.specs),
+              mapped.isPromo ? 1 : 0,
+              mapped.isPaketUpgrade ? 1 : 0,
+              mapped.stock,
+              mapped.weight_grams,
+              mapped.originCity,
+              mapped.variationGroups ? JSON.stringify(mapped.variationGroups) : null,
+              mapped.isActive ? 1 : 0
+            );
+          }
+        } catch (e) {
+        }
+      }
+      console.log(`[Supabase] Synced ${prods.length} products into local engine.`);
+    }
+  } catch (err) {
+    console.warn("[Supabase] Initial sync notice:", err);
+  }
+}
+var supabase = client;
 
 // server/midtrans.ts
 import crypto from "crypto";
@@ -1553,6 +1653,9 @@ app.get(["/api", "/api/health", "/api/db-status"], async (req, res) => {
   });
 });
 initDb();
+if (isSupabaseConfigured()) {
+  syncFromSupabase(db_default).catch((e) => console.warn("[Supabase Sync Startup Notice]:", e));
+}
 var rateLimitMap = /* @__PURE__ */ new Map();
 var rateLimiter = (maxRequests = 10, windowMs = 6e4) => {
   return (req, res, next) => {
@@ -2020,6 +2123,46 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
       insertItem.run(snap.id, orderId, snap.productId, snap.name, snap.price, snap.quantity, snap.subtotal);
     }
     db_default.exec("COMMIT");
+    if (supabase) {
+      try {
+        await supabase.from("orders").insert({
+          id: orderId,
+          invoice_number: invoiceNumber,
+          user_id: userId || null,
+          customer_name: customer.name,
+          customer_email: customer.email || null,
+          customer_phone: customer.phone,
+          shipping_address: shipping.address,
+          shipping_province: shipping.province || "",
+          shipping_city: shipping.city || "",
+          shipping_district: shipping.district || "",
+          courier_name: shipping.courierName || "JNE Express",
+          courier_service: shipping.courierService || "REG",
+          subtotal_amount: calculatedSubtotal,
+          shipping_cost: shippingCost,
+          voucher_id: voucherId,
+          voucher_code: voucherCode || null,
+          discount_amount: discountAmount,
+          grand_total: grandTotal,
+          status: "PENDING",
+          payment_method: paymentMethod || "qris",
+          expired_at: expiredAt
+        });
+        const sbItems = itemsSnapshot.map((s) => ({
+          id: s.id,
+          order_id: orderId,
+          product_id: s.productId,
+          product_name_snapshot: s.name,
+          price_snapshot: s.price,
+          quantity: s.quantity,
+          subtotal: s.subtotal
+        }));
+        await supabase.from("order_items").insert(sbItems);
+        console.log("[Checkout] Order synced to Supabase:", invoiceNumber);
+      } catch (sbOrderErr) {
+        console.warn("[Checkout] Supabase sync order notice:", sbOrderErr);
+      }
+    }
     let snapToken = null;
     let paymentUrl = null;
     const isCod = (paymentMethod || "").toLowerCase() === "cod";
@@ -2051,6 +2194,9 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
           snapToken = snapRes.token;
           paymentUrl = snapRes.redirect_url;
           db_default.prepare("UPDATE orders SET snap_token = ?, payment_url = ? WHERE id = ?").run(snapToken, paymentUrl, orderId);
+          if (supabase) {
+            supabase.from("orders").update({ snap_token: snapToken, payment_url: paymentUrl }).eq("id", orderId).then();
+          }
         }
       } catch (mErr) {
         console.warn("[Midtrans] Error creating transaction token:", mErr.message);
@@ -2268,13 +2414,26 @@ app.post("/api/webhooks/biteship", (req, res) => {
   }
   res.json({ success: true, message: "Biteship webhook diterima" });
 });
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
       return res.status(400).json({ error: "Username dan password wajib diisi" });
     }
-    let user = db_default.prepare("SELECT * FROM users WHERE username = ?").get(username);
+    let user = null;
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("users").select("*").eq("username", username).maybeSingle();
+        if (!error && data) {
+          user = data;
+        }
+      } catch (sbErr) {
+        console.warn("[Auth] Supabase login lookup notice:", sbErr);
+      }
+    }
+    if (!user) {
+      user = db_default.prepare("SELECT * FROM users WHERE username = ?").get(username);
+    }
     if (!user) {
       if (username === "admin" && (password === "admin123" || password === "admin")) {
         user = { id: "u-admin", username: "admin", role: "admin" };
@@ -2283,7 +2442,7 @@ app.post("/api/auth/login", (req, res) => {
       } else if (username === "member" && (password === "member123" || password === "password123")) {
         user = { id: "u-member", username: "member", role: "user" };
       }
-    } else {
+    } else if (user.password_hash) {
       const isMatch = bcrypt2.compareSync(password, user.password_hash);
       if (!isMatch) {
         if (username === "admin" && (password === "admin123" || password === "admin") || username === "agus" && (password === "password123" || password === "agus123" || password === "agus") || username === "member" && (password === "member123" || password === "password123")) {
@@ -2293,29 +2452,70 @@ app.post("/api/auth/login", (req, res) => {
       }
     }
     if (!user) {
-      return res.status(401).json({ error: "Username atau password salah" });
+      return res.status(401).json({ error: "Akun tidak ditemukan. Silakan periksa kembali username Anda atau daftar akun baru." });
     }
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role || "user" },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
-    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role || "user" } });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Gagal memproses login: " + (err.message || "Server error") });
   }
 });
-app.post("/api/auth/register", (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: "Username dan password wajib diisi" });
-  const existing = db_default.prepare("SELECT id FROM users WHERE username = ?").get(username);
-  if (existing) return res.status(400).json({ error: "Username sudah digunakan" });
-  const hash = bcrypt2.hashSync(password, 10);
-  const id = "u-" + Date.now();
-  db_default.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(id, username, hash, "user");
-  const token = jwt.sign({ id, username, role: "user" }, JWT_SECRET, { expiresIn: "24h" });
-  res.json({ token, user: { id, username, role: "user" } });
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: "Username dan password wajib diisi" });
+    let existsInSupabase = false;
+    if (supabase) {
+      try {
+        const { data } = await supabase.from("users").select("id").eq("username", username).maybeSingle();
+        if (data) existsInSupabase = true;
+      } catch (sbCheckErr) {
+        console.warn("[Auth] Supabase register check error:", sbCheckErr);
+      }
+    }
+    const localExisting = db_default.prepare("SELECT id FROM users WHERE username = ?").get(username);
+    if (existsInSupabase || localExisting) {
+      return res.status(400).json({ error: "Username sudah digunakan" });
+    }
+    const hash = bcrypt2.hashSync(password, 10);
+    const id = "u-" + Date.now();
+    if (supabase) {
+      try {
+        const { error: insErr } = await supabase.from("users").insert({
+          id,
+          username,
+          password_hash: hash,
+          role: "user"
+        });
+        if (insErr) {
+          console.warn("[Auth] Supabase register insert warning:", insErr.message);
+        } else {
+          console.log("[Auth] Akun baru berhasil disimpan di Supabase:", username);
+        }
+      } catch (sbInsertErr) {
+        console.warn("[Auth] Supabase register insert exception:", sbInsertErr);
+      }
+    }
+    try {
+      db_default.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+        id,
+        username,
+        hash,
+        "user"
+      );
+    } catch (dbErr) {
+    }
+    const token = jwt.sign({ id, username, role: "user" }, JWT_SECRET, { expiresIn: "24h" });
+    res.json({ token, user: { id, username, role: "user" } });
+  } catch (err) {
+    console.error("Register error:", err);
+    res.status(500).json({ error: "Gagal memproses registrasi: " + (err.message || "Server error") });
+  }
 });
 app.get("/api/auth/me", authMiddleware, (req, res) => {
   res.json({ user: req.user });

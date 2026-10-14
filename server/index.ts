@@ -6,7 +6,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import db, { initDb } from './db.ts';
-import { supabase, isSupabaseConfigured, checkSupabaseHealth } from './supabase.ts';
+import {
+  supabase,
+  isSupabaseConfigured,
+  checkSupabaseHealth,
+  syncFromSupabase,
+} from './supabase.ts';
 import {
   createSnapTransaction,
   verifyMidtransSignature,
@@ -59,8 +64,11 @@ app.get(['/api', '/api/health', '/api/db-status'], async (req: Request, res: Res
   });
 });
 
-// Initialize database tables
+// Initialize database tables & pull data from Supabase
 initDb();
+if (isSupabaseConfigured()) {
+  syncFromSupabase(db).catch((e) => console.warn('[Supabase Sync Startup Notice]:', e));
+}
 
 // =====================================================================
 // RATE LIMITER (PRD Section 6.1)
@@ -670,6 +678,49 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
 
     db.exec('COMMIT');
 
+    // Sync order to Supabase
+    if (supabase) {
+      try {
+        await supabase.from('orders').insert({
+          id: orderId,
+          invoice_number: invoiceNumber,
+          user_id: userId || null,
+          customer_name: customer.name,
+          customer_email: customer.email || null,
+          customer_phone: customer.phone,
+          shipping_address: shipping.address,
+          shipping_province: shipping.province || '',
+          shipping_city: shipping.city || '',
+          shipping_district: shipping.district || '',
+          courier_name: shipping.courierName || 'JNE Express',
+          courier_service: shipping.courierService || 'REG',
+          subtotal_amount: calculatedSubtotal,
+          shipping_cost: shippingCost,
+          voucher_id: voucherId,
+          voucher_code: voucherCode || null,
+          discount_amount: discountAmount,
+          grand_total: grandTotal,
+          status: 'PENDING',
+          payment_method: paymentMethod || 'qris',
+          expired_at: expiredAt,
+        });
+
+        const sbItems = itemsSnapshot.map((s) => ({
+          id: s.id,
+          order_id: orderId,
+          product_id: s.productId,
+          product_name_snapshot: s.name,
+          price_snapshot: s.price,
+          quantity: s.quantity,
+          subtotal: s.subtotal,
+        }));
+        await supabase.from('order_items').insert(sbItems);
+        console.log('[Checkout] Order synced to Supabase:', invoiceNumber);
+      } catch (sbOrderErr) {
+        console.warn('[Checkout] Supabase sync order notice:', sbOrderErr);
+      }
+    }
+
     // Generate Midtrans Snap Token if configured AND NOT COD
     let snapToken: string | null = null;
     let paymentUrl: string | null = null;
@@ -704,6 +755,9 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
           snapToken = snapRes.token;
           paymentUrl = snapRes.redirect_url;
           db.prepare('UPDATE orders SET snap_token = ?, payment_url = ? WHERE id = ?').run(snapToken, paymentUrl, orderId);
+          if (supabase) {
+            supabase.from('orders').update({ snap_token: snapToken, payment_url: paymentUrl }).eq('id', orderId).then();
+          }
         }
       } catch (mErr: any) {
         console.warn('[Midtrans] Error creating transaction token:', mErr.message);
@@ -988,19 +1042,41 @@ app.post('/api/webhooks/biteship', (req: any, res: any) => {
 });
 
 // =====================================================================
-// AUTH ENDPOINTS
+// AUTH ENDPOINTS (Supabase Connected with Local Resilient Fallback)
 // =====================================================================
-app.post('/api/auth/login', (req: any, res: any) => {
+app.post('/api/auth/login', async (req: any, res: any) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
       return res.status(400).json({ error: 'Username dan password wajib diisi' });
     }
 
-    let user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+    let user: any = null;
 
+    // 1. Cek dari Supabase terlebih dahulu
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', username)
+          .maybeSingle();
+
+        if (!error && data) {
+          user = data;
+        }
+      } catch (sbErr) {
+        console.warn('[Auth] Supabase login lookup notice:', sbErr);
+      }
+    }
+
+    // 2. Fallback ke SQLite / In-Memory
     if (!user) {
-      // Demo / seed fallback
+      user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+    }
+
+    // 3. Fallback demo users jika akun baru di-seed
+    if (!user) {
       if (username === 'admin' && (password === 'admin123' || password === 'admin')) {
         user = { id: 'u-admin', username: 'admin', role: 'admin' };
       } else if (username === 'agus' && (password === 'password123' || password === 'agus123' || password === 'agus')) {
@@ -1008,13 +1084,15 @@ app.post('/api/auth/login', (req: any, res: any) => {
       } else if (username === 'member' && (password === 'member123' || password === 'password123')) {
         user = { id: 'u-member', username: 'member', role: 'user' };
       }
-    } else {
+    } else if (user.password_hash) {
       const isMatch = bcrypt.compareSync(password, user.password_hash);
       if (!isMatch) {
-        if ((username === 'admin' && (password === 'admin123' || password === 'admin')) ||
-            (username === 'agus' && (password === 'password123' || password === 'agus123' || password === 'agus')) ||
-            (username === 'member' && (password === 'member123' || password === 'password123'))) {
-          // Allow convenience access for standard demo accounts
+        if (
+          (username === 'admin' && (password === 'admin123' || password === 'admin')) ||
+          (username === 'agus' && (password === 'password123' || password === 'agus123' || password === 'agus')) ||
+          (username === 'member' && (password === 'member123' || password === 'password123'))
+        ) {
+          // Akses kemudahan untuk akun demo bawaan
         } else {
           return res.status(401).json({ error: 'Username atau password salah' });
         }
@@ -1022,35 +1100,88 @@ app.post('/api/auth/login', (req: any, res: any) => {
     }
 
     if (!user) {
-      return res.status(401).json({ error: 'Username atau password salah' });
+      return res.status(401).json({ error: 'Akun tidak ditemukan. Silakan periksa kembali username Anda atau daftar akun baru.' });
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role || 'user' },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
-    res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+    res.json({ token, user: { id: user.id, username: user.username, role: user.role || 'user' } });
   } catch (err: any) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Gagal memproses login: ' + (err.message || 'Server error') });
   }
 });
 
-app.post('/api/auth/register', (req: any, res: any) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Username dan password wajib diisi' });
+app.post('/api/auth/register', async (req: any, res: any) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'Username dan password wajib diisi' });
 
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-  if (existing) return res.status(400).json({ error: 'Username sudah digunakan' });
+    // 1. Cek apakah username sudah terdaftar di Supabase
+    let existsInSupabase = false;
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('id')
+          .eq('username', username)
+          .maybeSingle();
 
-  const hash = bcrypt.hashSync(password, 10);
-  const id = 'u-' + Date.now();
+        if (data) existsInSupabase = true;
+      } catch (sbCheckErr) {
+        console.warn('[Auth] Supabase register check error:', sbCheckErr);
+      }
+    }
 
-  db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(id, username, hash, 'user');
-  const token = jwt.sign({ id, username, role: 'user' }, JWT_SECRET, { expiresIn: '24h' });
+    // 2. Cek di local store
+    const localExisting = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existsInSupabase || localExisting) {
+      return res.status(400).json({ error: 'Username sudah digunakan' });
+    }
 
-  res.json({ token, user: { id, username, role: 'user' } });
+    const hash = bcrypt.hashSync(password, 10);
+    const id = 'u-' + Date.now();
+
+    // 3. Simpan ke database Supabase
+    if (supabase) {
+      try {
+        const { error: insErr } = await supabase.from('users').insert({
+          id,
+          username,
+          password_hash: hash,
+          role: 'user',
+        });
+        if (insErr) {
+          console.warn('[Auth] Supabase register insert warning:', insErr.message);
+        } else {
+          console.log('[Auth] Akun baru berhasil disimpan di Supabase:', username);
+        }
+      } catch (sbInsertErr) {
+        console.warn('[Auth] Supabase register insert exception:', sbInsertErr);
+      }
+    }
+
+    // 4. Sinkronisasi ke local db (untuk query caching lokal)
+    try {
+      db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+        id,
+        username,
+        hash,
+        'user'
+      );
+    } catch (dbErr) {
+      // Abaikan jika sudah ada
+    }
+
+    const token = jwt.sign({ id, username, role: 'user' }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id, username, role: 'user' } });
+  } catch (err: any) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'Gagal memproses registrasi: ' + (err.message || 'Server error') });
+  }
 });
 
 app.get('/api/auth/me', authMiddleware, (req: any, res: any) => {
