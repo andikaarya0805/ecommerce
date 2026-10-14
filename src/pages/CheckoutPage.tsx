@@ -340,6 +340,7 @@ export const CheckoutPage: React.FC = () => {
           shippingCost,
         },
         paymentMethod: selectedPayment,
+        notes: orderNote.trim() || undefined,
       };
 
       const headers: any = { 'Content-Type': 'application/json' };

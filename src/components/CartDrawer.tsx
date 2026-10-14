@@ -58,6 +58,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [customerNotes, setCustomerNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'qris' | 'bca' | 'gopay' | 'cod'>('qris');
 
   useEffect(() => {
@@ -213,6 +214,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           shippingCost,
         },
         paymentMethod,
+        notes: customerNotes.trim() || undefined,
       };
 
       const headers: any = { 'Content-Type': 'application/json' };
@@ -498,6 +500,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       value={customerAddress}
                       onChange={(e) => setCustomerAddress(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-xs text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-neutral-300 mb-1 flex items-center justify-between">
+                      <span>Catatan untuk Penjual (Opsional)</span>
+                      <span className="text-[9px] text-neutral-500 font-normal">Misal: Request warna, tipe motor, atau bubble wrap</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Tulis catatan khusus untuk admin di sini..."
+                      value={customerNotes}
+                      onChange={(e) => setCustomerNotes(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914]"
                     />
                   </div>
                 </div>

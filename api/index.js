@@ -415,6 +415,7 @@ function createInMemoryDb() {
       specs: JSON.stringify(p.specs || {}),
       isPromo: p.isPromo ? 1 : 0,
       isPaketUpgrade: p.isPaketUpgrade ? 1 : 0,
+      variation_groups: p.variationGroups ? JSON.stringify(p.variationGroups) : null,
       weight_grams: p.weight_grams || 500,
       is_active: 1,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -562,6 +563,7 @@ function createInMemoryDb() {
               customer_email,
               customer_phone,
               shipping_address,
+              customer_notes,
               shipping_province,
               shipping_city,
               shipping_district,
@@ -575,7 +577,6 @@ function createInMemoryDb() {
               grand_total,
               status,
               payment_method,
-              payment_url,
               expired_at
             ] = params;
             orders.unshift({
@@ -586,6 +587,7 @@ function createInMemoryDb() {
               customer_email,
               customer_phone,
               shipping_address,
+              customer_notes: customer_notes || null,
               shipping_province,
               shipping_city,
               shipping_district,
@@ -599,7 +601,7 @@ function createInMemoryDb() {
               grand_total,
               status: status || "PENDING",
               payment_method,
-              payment_url,
+              payment_url: null,
               expired_at,
               created_at: (/* @__PURE__ */ new Date()).toISOString()
             });
@@ -675,6 +677,125 @@ function createInMemoryDb() {
             const [st, id] = params;
             const p = products.find((pr) => pr.id === id);
             if (p) p.is_active = st;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("INSERT INTO products")) {
+            const [
+              id,
+              name,
+              slug,
+              category,
+              compatibilityText,
+              fitmentTag,
+              price,
+              originalPrice,
+              discountPercent,
+              promoTag,
+              rating,
+              soldCount,
+              image,
+              description,
+              specs,
+              isPromo,
+              isPaketUpgrade,
+              stock,
+              weight_grams,
+              originCity,
+              variation_groups,
+              is_active
+            ] = params;
+            products.unshift({
+              id,
+              name,
+              slug,
+              category,
+              compatibilityText,
+              fitmentTag,
+              price,
+              originalPrice,
+              discountPercent,
+              promoTag,
+              rating: rating || 5,
+              soldCount: soldCount || 0,
+              image,
+              description,
+              specs,
+              isPromo,
+              isPaketUpgrade,
+              stock,
+              weight_grams,
+              originCity: originCity || "Jakarta Timur",
+              variation_groups,
+              is_active: is_active ?? 1,
+              created_at: (/* @__PURE__ */ new Date()).toISOString()
+            });
+            return { changes: 1, lastInsertRowid: products.length };
+          }
+          if (cleanSql.includes("UPDATE products SET") && cleanSql.includes("name = ?")) {
+            const [
+              name,
+              category,
+              compatibilityText,
+              fitmentTag,
+              price,
+              originalPrice,
+              discountPercent,
+              promoTag,
+              image,
+              description,
+              specs,
+              isPromo,
+              isPaketUpgrade,
+              stock,
+              weight_grams,
+              originCity,
+              variation_groups,
+              is_active,
+              id
+            ] = params;
+            const p = products.find((pr) => pr.id === id);
+            if (p) {
+              Object.assign(p, {
+                name,
+                category,
+                compatibilityText,
+                fitmentTag,
+                price,
+                originalPrice,
+                discountPercent,
+                promoTag,
+                image,
+                description,
+                specs,
+                isPromo,
+                isPaketUpgrade,
+                stock,
+                weight_grams,
+                originCity,
+                variation_groups,
+                is_active
+              });
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("DELETE FROM products WHERE id = ?")) {
+            const [id] = params;
+            const idx = products.findIndex((pr) => pr.id === id);
+            if (idx !== -1) products.splice(idx, 1);
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("product_bike_compatibility") && cleanSql.includes("INSERT")) {
+            const [product_id, bike_type] = params;
+            product_bike_compat.push({ product_id, bike_type });
+            return { changes: 1, lastInsertRowid: product_bike_compat.length };
+          }
+          if (cleanSql.includes("DELETE FROM product_bike_compatibility WHERE product_id = ?")) {
+            const [product_id] = params;
+            for (let i = product_bike_compat.length - 1; i >= 0; i--) {
+              if (product_bike_compat[i].product_id === product_id) {
+                product_bike_compat.splice(i, 1);
+              }
+            }
             return { changes: 1, lastInsertRowid: 0 };
           }
           if (cleanSql.includes("UPDATE vouchers SET used_count = used_count + 1")) {
@@ -954,6 +1075,8 @@ function initDb() {
     ensureColumn("orders", "biteship_order_id", "TEXT");
     ensureColumn("orders", "biteship_tracking_id", "TEXT");
     ensureColumn("orders", "destination_area_id", "TEXT");
+    ensureColumn("orders", "customer_notes", "TEXT");
+    ensureColumn("products", "variation_groups", "TEXT");
     try {
       const prods = db.prepare("SELECT id, name, slug FROM products").all();
       const updateSlug = db.prepare(
@@ -1509,6 +1632,7 @@ app.get("/api/products", (req, res) => {
   const products = rawProducts.map((p) => ({
     ...p,
     specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs,
+    variationGroups: typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups || "[]") : p.variationGroups || p.variation_groups || void 0,
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility: getCompat.all(p.id).map((c) => c.bike_type)
@@ -1523,6 +1647,7 @@ app.get("/api/products/:slugOrId", (req, res) => {
   res.json({
     ...p,
     specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs,
+    variationGroups: typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups || "[]") : p.variationGroups || p.variation_groups || void 0,
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility
@@ -1679,7 +1804,7 @@ function mapPaymentMethodToMidtrans(method) {
   return void 0;
 }
 app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res) => {
-  const { items, voucherCode, customer, shipping, paymentMethod } = req.body;
+  const { items, voucherCode, customer, shipping, paymentMethod, notes, customerNotes, orderNote } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "Keranjang belanja tidak boleh kosong" });
   }
@@ -1689,6 +1814,12 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
   const userId = req.user ? req.user.id : null;
   if (!userId) {
     return res.status(401).json({ error: "Silakan login terlebih dahulu untuk melakukan checkout." });
+  }
+  const rawNote = notes || customerNotes || orderNote || customer?.notes;
+  let buyerNotes = rawNote ? String(rawNote).trim() : null;
+  if (!buyerNotes && shipping?.address) {
+    const match = shipping.address.match(/\(Catatan:\s*(.+?)\)/i);
+    if (match) buyerNotes = match[1].trim();
   }
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
@@ -1702,13 +1833,13 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
   const insertOrder = db_default.prepare(`
     INSERT INTO orders (
       id, invoice_number, user_id, customer_name, customer_email, customer_phone,
-      shipping_address, shipping_province, shipping_city, shipping_district,
+      shipping_address, customer_notes, shipping_province, shipping_city, shipping_district,
       courier_name, courier_service, subtotal_amount, shipping_cost,
       voucher_id, voucher_code, discount_amount, grand_total, status,
       payment_method, expired_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?, 'PENDING',
       ?, ?
@@ -1783,6 +1914,7 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
       customer.email || null,
       customer.phone,
       shipping.address,
+      buyerNotes || null,
       shipping.province || "",
       shipping.city || "",
       shipping.district || "",
@@ -2156,10 +2288,18 @@ app.get("/api/admin/orders", authMiddleware, adminMiddleware, (req, res) => {
   query += " ORDER BY created_at DESC";
   const orders = db_default.prepare(query).all(...params);
   const getItems = db_default.prepare("SELECT * FROM order_items WHERE order_id = ?");
-  const enriched = orders.map((o) => ({
-    ...o,
-    items: getItems.all(o.id)
-  }));
+  const enriched = orders.map((o) => {
+    let customerNotes = o.customer_notes;
+    if (!customerNotes && o.shipping_address) {
+      const match = o.shipping_address.match(/\(Catatan:\s*(.+?)\)/i);
+      if (match) customerNotes = match[1].trim();
+    }
+    return {
+      ...o,
+      customer_notes: customerNotes || null,
+      items: getItems.all(o.id)
+    };
+  });
   res.json(enriched);
 });
 app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, (req, res) => {
@@ -2272,6 +2412,7 @@ app.get("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
     products.map((p) => ({
       ...p,
       specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs,
+      variationGroups: typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups || "[]") : p.variationGroups || p.variation_groups || void 0,
       isPromo: p.isPromo === 1,
       isPaketUpgrade: p.isPaketUpgrade === 1,
       isActive: p.is_active === 1,
@@ -2288,8 +2429,8 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
       INSERT INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
         discountPercent, promoTag, rating, soldCount, image, description, specs,
-        isPromo, isPaketUpgrade, stock, weight_grams, originCity, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       p.name,
@@ -2311,6 +2452,7 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
       p.stock || 0,
       p.weight_grams || 500,
       p.originCity || "Jakarta Timur",
+      p.variationGroups ? JSON.stringify(p.variationGroups) : null,
       p.isActive !== false ? 1 : 0
     );
     if (p.bikeCompatibility && Array.isArray(p.bikeCompatibility)) {
@@ -2333,7 +2475,7 @@ app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) =
         name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
         price = ?, originalPrice = ?, discountPercent = ?, promoTag = ?,
         image = ?, description = ?, specs = ?, isPromo = ?, isPaketUpgrade = ?,
-        stock = ?, weight_grams = ?, is_active = ?
+        stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, is_active = ?
       WHERE id = ?
     `).run(
       p.name,
@@ -2351,6 +2493,8 @@ app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) =
       p.isPaketUpgrade ? 1 : 0,
       p.stock,
       p.weight_grams || 500,
+      p.originCity || "Jakarta Timur",
+      p.variationGroups ? JSON.stringify(p.variationGroups) : null,
       p.isActive !== false ? 1 : 0,
       id
     );

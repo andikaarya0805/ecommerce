@@ -100,6 +100,7 @@ export interface Order {
   customer_email?: string | null;
   customer_phone: string;
   shipping_address: string;
+  customer_notes?: string | null;
   shipping_province?: string;
   shipping_city?: string;
   shipping_district?: string;

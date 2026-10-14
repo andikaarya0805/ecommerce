@@ -288,6 +288,7 @@ app.get('/api/products', (req, res) => {
   const products = rawProducts.map((p: any) => ({
     ...p,
     specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
+    variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility: getCompat.all(p.id).map((c: any) => c.bike_type),
@@ -310,6 +311,7 @@ app.get('/api/products/:slugOrId', (req, res) => {
   res.json({
     ...p,
     specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
+    variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
     isPromo: p.isPromo === 1,
     isPaketUpgrade: p.isPaketUpgrade === 1,
     bikeCompatibility,
@@ -491,7 +493,7 @@ function mapPaymentMethodToMidtrans(method?: string): string[] | undefined {
 // SPRINT 1: PENGAMANAN CHECKOUT & ATOMIC TRANSACTION (PRD Section 4.1 & 6.1)
 // =====================================================================
 app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: any, res: any) => {
-  const { items, voucherCode, customer, shipping, paymentMethod } = req.body;
+  const { items, voucherCode, customer, shipping, paymentMethod, notes, customerNotes, orderNote } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Keranjang belanja tidak boleh kosong' });
@@ -505,6 +507,14 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
   if (!userId) {
     return res.status(401).json({ error: 'Silakan login terlebih dahulu untuk melakukan checkout.' });
   }
+
+  const rawNote = notes || customerNotes || orderNote || customer?.notes;
+  let buyerNotes = rawNote ? String(rawNote).trim() : null;
+  if (!buyerNotes && shipping?.address) {
+    const match = shipping.address.match(/\(Catatan:\s*(.+?)\)/i);
+    if (match) buyerNotes = match[1].trim();
+  }
+
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const invoiceNumber = `INV-${dateStr}-${randomSuffix}`;
@@ -522,13 +532,13 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
   const insertOrder = db.prepare(`
     INSERT INTO orders (
       id, invoice_number, user_id, customer_name, customer_email, customer_phone,
-      shipping_address, shipping_province, shipping_city, shipping_district,
+      shipping_address, customer_notes, shipping_province, shipping_city, shipping_district,
       courier_name, courier_service, subtotal_amount, shipping_cost,
       voucher_id, voucher_code, discount_amount, grand_total, status,
       payment_method, expired_at
     ) VALUES (
       ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?, 'PENDING',
       ?, ?
@@ -627,6 +637,7 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
       customer.email || null,
       customer.phone,
       shipping.address,
+      buyerNotes || null,
       shipping.province || '',
       shipping.city || '',
       shipping.district || '',
@@ -1113,10 +1124,18 @@ app.get('/api/admin/orders', authMiddleware, adminMiddleware, (req: any, res: an
   const orders = db.prepare(query).all(...params) as any[];
 
   const getItems = db.prepare('SELECT * FROM order_items WHERE order_id = ?');
-  const enriched = orders.map((o) => ({
-    ...o,
-    items: getItems.all(o.id),
-  }));
+  const enriched = orders.map((o) => {
+    let customerNotes = o.customer_notes;
+    if (!customerNotes && o.shipping_address) {
+      const match = o.shipping_address.match(/\(Catatan:\s*(.+?)\)/i);
+      if (match) customerNotes = match[1].trim();
+    }
+    return {
+      ...o,
+      customer_notes: customerNotes || null,
+      items: getItems.all(o.id),
+    };
+  });
 
   res.json(enriched);
 });
@@ -1252,6 +1271,7 @@ app.get('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res: 
     products.map((p) => ({
       ...p,
       specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
+      variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
       isPromo: p.isPromo === 1,
       isPaketUpgrade: p.isPaketUpgrade === 1,
       isActive: p.is_active === 1,
@@ -1273,8 +1293,8 @@ app.post('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res:
       INSERT INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
         discountPercent, promoTag, rating, soldCount, image, description, specs,
-        isPromo, isPaketUpgrade, stock, weight_grams, originCity, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       p.name,
@@ -1296,6 +1316,7 @@ app.post('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res:
       p.stock || 0,
       p.weight_grams || 500,
       p.originCity || 'Jakarta Timur',
+      p.variationGroups ? JSON.stringify(p.variationGroups) : null,
       p.isActive !== false ? 1 : 0
     );
 
@@ -1322,7 +1343,7 @@ app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, r
         name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
         price = ?, originalPrice = ?, discountPercent = ?, promoTag = ?,
         image = ?, description = ?, specs = ?, isPromo = ?, isPaketUpgrade = ?,
-        stock = ?, weight_grams = ?, is_active = ?
+        stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, is_active = ?
       WHERE id = ?
     `).run(
       p.name,
@@ -1340,6 +1361,8 @@ app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, r
       p.isPaketUpgrade ? 1 : 0,
       p.stock,
       p.weight_grams || 500,
+      p.originCity || 'Jakarta Timur',
+      p.variationGroups ? JSON.stringify(p.variationGroups) : null,
       p.isActive !== false ? 1 : 0,
       id
     );

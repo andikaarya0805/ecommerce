@@ -24,10 +24,34 @@ import {
   Ticket,
   ShoppingBag,
   ExternalLink,
-  X
+  X,
+  Layers,
+  Tag,
+  Percent,
+  SlidersHorizontal,
+  Info,
+  Sparkles,
+  Check
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
+
+const BIKE_OPTIONS = [
+  { id: 'vario-pcx', label: 'Vario & PCX' },
+  { id: 'nmax-aerox', label: 'NMAX & Aerox' },
+  { id: 'beat-scoopy', label: 'Beat & Scoopy' },
+  { id: 'mio-series', label: 'Mio Series' },
+  { id: 'sport-bebek', label: 'Sport & Bebek' },
+];
+
+const PROMO_TAG_PRESETS = [
+  'MALL',
+  'Best Seller',
+  'Promo 30%',
+  'Flash Sale',
+  'Star Seller',
+  'Spesial CVT',
+];
 
 export const AdminPanel: React.FC = () => {
   const { user, token, logout } = useAuth();
@@ -57,6 +81,8 @@ export const AdminPanel: React.FC = () => {
   const [productSearch, setProductSearch] = useState<string>('');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [specRows, setSpecRows] = useState<{ key: string; value: string }[]>([]);
+  const [varGroups, setVarGroups] = useState<{ name: string; optionsStr: string }[]>([]);
 
   // Vouchers CMS State
   const [vouchers, setVouchers] = useState<any[]>([]);
@@ -195,6 +221,72 @@ export const AdminPanel: React.FC = () => {
   };
 
   // Product Handlers
+  const openEditProduct = (p: any) => {
+    setEditingProduct({
+      ...p,
+      bikeCompatibility: p.bikeCompatibility || [],
+      originCity: p.originCity || 'Jakarta Timur',
+      promoTag: p.promoTag || '',
+      fitmentTag: p.fitmentTag || 'Plug & Play (PnP)',
+      compatibilityText: p.compatibilityText || '',
+    });
+
+    const specs = typeof p.specs === 'object' && p.specs ? p.specs : {};
+    const entries = Object.entries(specs).map(([k, v]) => ({ key: k, value: String(v) }));
+    setSpecRows(entries.length > 0 ? entries : [
+      { key: 'Bahan', value: 'Billet Aluminium 6061' },
+      { key: 'Merk', value: 'BRT Racing Parts' },
+      { key: 'Garansi', value: '1 Bulan Tukar Baru' },
+    ]);
+
+    const groups = (p.variationGroups || []).map((g: any) => ({
+      name: g.name || '',
+      optionsStr: Array.isArray(g.options)
+        ? g.options.map((opt: any) => (typeof opt === 'string' ? opt : opt.name)).join(', ')
+        : '',
+    }));
+    setVarGroups(groups);
+
+    setIsProductModalOpen(true);
+  };
+
+  const openCreateProduct = () => {
+    setEditingProduct({
+      name: '',
+      category: 'cvt',
+      bikeCompatibility: ['vario-pcx'],
+      compatibilityText: 'Vario 125/150/160, PCX 150/160',
+      fitmentTag: 'Plug & Play (PnP)',
+      price: 150000,
+      originalPrice: 200000,
+      discountPercent: 25,
+      promoTag: 'MALL',
+      rating: 5.0,
+      soldCount: 0,
+      stock: 25,
+      weight_grams: 500,
+      originCity: 'Jakarta Timur',
+      image: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60',
+      description: 'Part racing performa tinggi standar kompetisi dan harian.',
+      isPromo: true,
+      isPaketUpgrade: false,
+      isActive: true,
+    });
+
+    setSpecRows([
+      { key: 'Bahan', value: 'Billet Aluminium 6061' },
+      { key: 'Merk', value: 'BRT Racing Parts' },
+      { key: 'Garansi', value: '1 Bulan Tukar Baru' },
+    ]);
+
+    setVarGroups([
+      { name: 'Pilihan Varian', optionsStr: 'Standard Racing, High Spec 13.5 Derajat' },
+      { name: 'Berat Roller', optionsStr: '9 Gram, 10 Gram, 11 Gram, 12 Gram' },
+    ]);
+
+    setIsProductModalOpen(true);
+  };
+
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -202,13 +294,48 @@ export const AdminPanel: React.FC = () => {
       const url = isEdit ? `/api/admin/products/${editingProduct.id}` : '/api/admin/products';
       const method = isEdit ? 'PUT' : 'POST';
 
+      const specsObj: Record<string, string> = {};
+      for (const row of specRows) {
+        if (row.key.trim() && row.value.trim()) {
+          specsObj[row.key.trim()] = row.value.trim();
+        }
+      }
+
+      const cleanVariationGroups = varGroups
+        .filter((g) => g.name.trim() !== '')
+        .map((g) => ({
+          name: g.name.trim(),
+          options: g.optionsStr.split(',').map((s) => s.trim()).filter(Boolean),
+        }))
+        .filter((g) => g.options.length > 0);
+
+      const priceNum = Math.max(0, parseInt(editingProduct.price) || 0);
+      const origPriceNum = editingProduct.originalPrice ? Math.max(0, parseInt(editingProduct.originalPrice) || 0) : null;
+      let discountPct = editingProduct.discountPercent ? parseInt(editingProduct.discountPercent) || 0 : 0;
+      if (origPriceNum && origPriceNum > priceNum) {
+        discountPct = Math.round(((origPriceNum - priceNum) / origPriceNum) * 100);
+      }
+
+      const cleanPayload = {
+        ...editingProduct,
+        price: priceNum,
+        originalPrice: origPriceNum,
+        discountPercent: discountPct,
+        stock: Math.max(0, parseInt(editingProduct.stock) || 0),
+        weight_grams: Math.max(10, parseInt(editingProduct.weight_grams) || 500),
+        originCity: editingProduct.originCity || 'Jakarta Timur',
+        bikeCompatibility: editingProduct.bikeCompatibility || [],
+        specs: specsObj,
+        variationGroups: cleanVariationGroups,
+      };
+
       const res = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(editingProduct),
+        body: JSON.stringify(cleanPayload),
       });
 
       if (!res.ok) {
@@ -548,13 +675,10 @@ export const AdminPanel: React.FC = () => {
                           </td>
                           <td className="p-3 text-right">
                             <button
-                              onClick={() => {
-                                setEditingProduct(p);
-                                setIsProductModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold"
+                              onClick={() => openEditProduct(p)}
+                              className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-[#E50914] text-white font-bold transition-colors"
                             >
-                              Restock
+                              Restock / Edit
                             </button>
                           </td>
                         </tr>
@@ -640,6 +764,15 @@ export const AdminPanel: React.FC = () => {
                           <td className="p-3.5">
                             <span className="font-bold text-white block">{ord.customer_name}</span>
                             <span className="text-neutral-400 text-[11px]">{ord.customer_phone}</span>
+                            {ord.customer_notes && (
+                              <div
+                                className="mt-1.5 flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/60 border border-amber-800/80 rounded px-1.5 py-0.5 max-w-[220px]"
+                                title={ord.customer_notes}
+                              >
+                                <span className="text-amber-400 font-bold shrink-0">📝</span>
+                                <span className="truncate">{ord.customer_notes}</span>
+                              </div>
+                            )}
                           </td>
                           <td className="p-3.5">
                             <span className="text-neutral-200 block font-medium">
@@ -725,31 +858,8 @@ export const AdminPanel: React.FC = () => {
               </div>
 
               <button
-                onClick={() => {
-                  setEditingProduct({
-                    name: '',
-                    category: 'cvt',
-                    compatibilityText: 'Universal Matic',
-                    fitmentTag: 'Plug & Play (PnP)',
-                    price: 150000,
-                    originalPrice: 200000,
-                    discountPercent: 25,
-                    promoTag: 'Promo Baru',
-                    rating: 5.0,
-                    soldCount: 0,
-                    stock: 20,
-                    weight_grams: 500,
-                    originCity: 'Jakarta Timur',
-                    image: '/images/default.jpg',
-                    description: '',
-                    specs: {},
-                    isPromo: true,
-                    isPaketUpgrade: false,
-                    isActive: true,
-                  });
-                  setIsProductModalOpen(true);
-                }}
-                className="px-4 py-2 bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-md shadow-red-950/40 cursor-pointer"
+                onClick={openCreateProduct}
+                className="px-4 py-2 bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-md shadow-red-950/40 cursor-pointer transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Produk Baru</span>
@@ -762,35 +872,73 @@ export const AdminPanel: React.FC = () => {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-neutral-900 text-neutral-400 border-b border-neutral-800 uppercase text-[10px]">
                     <tr>
-                      <th className="p-3.5">Produk</th>
-                      <th className="p-3.5">Kategori</th>
-                      <th className="p-3.5">Harga</th>
-                      <th className="p-3.5">Stok</th>
-                      <th className="p-3.5">Status Aktif</th>
+                      <th className="p-3.5">Produk & Kesesuaian Motor</th>
+                      <th className="p-3.5">Kategori & Asal</th>
+                      <th className="p-3.5">Harga & Diskon</th>
+                      <th className="p-3.5">Stok & Berat</th>
+                      <th className="p-3.5">Variasi Shopee</th>
+                      <th className="p-3.5">Status</th>
                       <th className="p-3.5 text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-800/80">
                     {filteredProducts.map((p) => (
-                      <tr key={p.id} className="hover:bg-neutral-900/40">
-                        <td className="p-3.5 flex items-center gap-3">
+                      <tr key={p.id} className="hover:bg-neutral-900/40 transition-colors">
+                        <td className="p-3.5 flex items-start gap-3">
                           <img
                             src={p.image}
                             alt={p.name}
-                            className="w-10 h-10 rounded object-cover bg-black flex-shrink-0"
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-lg object-cover bg-black flex-shrink-0 border border-neutral-800"
                           />
-                          <div>
-                            <span className="font-bold text-white block max-w-xs truncate">{p.name}</span>
-                            <span className="text-[10px] text-neutral-400">{p.fitmentTag}</span>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {p.promoTag && (
+                                <span className="bg-[#D0011B] text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                                  {p.promoTag}
+                                </span>
+                              )}
+                              <span className="font-bold text-white text-xs max-w-xs truncate block">{p.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 flex-wrap">
+                              <span className="text-emerald-400 font-medium">{p.fitmentTag || 'PnP'}</span>
+                              <span>•</span>
+                              <span className="text-neutral-400 truncate max-w-[200px]">{p.compatibilityText || 'Universal'}</span>
+                            </div>
+                            {p.bikeCompatibility && p.bikeCompatibility.length > 0 && (
+                              <div className="flex gap-1 flex-wrap pt-0.5">
+                                {p.bikeCompatibility.map((bc: string) => {
+                                  const opt = BIKE_OPTIONS.find((b) => b.id === bc);
+                                  return (
+                                    <span key={bc} className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300">
+                                      {opt?.label || bc}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </td>
-                        <td className="p-3.5 uppercase text-neutral-300 font-semibold">{p.category}</td>
-                        <td className="p-3.5 font-racing text-sm text-[#E50914] font-bold">
-                          {formatIDR(p.price)}
+                        <td className="p-3.5">
+                          <span className="uppercase text-neutral-200 font-bold block text-[11px]">{p.category}</span>
+                          <span className="text-[10px] text-neutral-400">{p.originCity || 'Jakarta Timur'}</span>
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-racing text-sm text-[#E50914] font-bold">
+                            {formatIDR(p.price)}
+                          </div>
+                          {p.originalPrice && p.originalPrice > p.price && (
+                            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
+                              <span className="line-through">{formatIDR(p.originalPrice)}</span>
+                              <span className="text-[#D0011B] font-bold">
+                                -{p.discountPercent || Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}%
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-3.5">
                           <span
-                            className={`px-2 py-0.5 rounded font-bold ${
+                            className={`px-2 py-0.5 rounded font-bold text-[11px] block w-fit ${
                               p.stock < 5
                                 ? 'bg-red-950 text-red-300 border border-red-800'
                                 : 'bg-neutral-800 text-neutral-200'
@@ -798,6 +946,21 @@ export const AdminPanel: React.FC = () => {
                           >
                             {p.stock} pcs
                           </span>
+                          <span className="text-[10px] text-neutral-400 mt-0.5 block">{p.weight_grams || 500} gram</span>
+                        </td>
+                        <td className="p-3.5">
+                          {p.variationGroups && p.variationGroups.length > 0 ? (
+                            <div className="space-y-1">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 border border-amber-800/80 text-amber-300 block w-fit">
+                                {p.variationGroups.length} Grup Variasi
+                              </span>
+                              <div className="text-[10px] text-neutral-400 truncate max-w-[150px]">
+                                {p.variationGroups.map((g: any) => `${g.name} (${g.options?.length || 0})`).join(', ')}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-neutral-500 italic">Tanpa Variasi</span>
+                          )}
                         </td>
                         <td className="p-3.5">
                           <button
@@ -813,18 +976,15 @@ export const AdminPanel: React.FC = () => {
                         </td>
                         <td className="p-3.5 text-right space-x-1.5">
                           <button
-                            onClick={() => {
-                              setEditingProduct(p);
-                              setIsProductModalOpen(true);
-                            }}
-                            className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300"
-                            title="Edit"
+                            onClick={() => openEditProduct(p)}
+                            className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors"
+                            title="Edit Produk"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleDeleteProduct(p.id)}
-                            className="p-1.5 rounded bg-red-950/60 hover:bg-red-900 text-red-400"
+                            className="p-1.5 rounded bg-red-950/60 hover:bg-red-900 text-red-400 transition-colors"
                             title="Hapus"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -973,6 +1133,35 @@ export const AdminPanel: React.FC = () => {
                   {selectedOrder.shipping_address}
                 </p>
               </div>
+            </div>
+
+            {/* Buyer Notes / Catatan Pembeli */}
+            <div className={`p-4 rounded-xl border text-xs transition-all ${
+              selectedOrder.customer_notes
+                ? 'bg-amber-500/10 border-amber-500/30 shadow-md shadow-amber-950/20'
+                : 'bg-neutral-900 border-neutral-800'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <span className="text-base">📝</span> Catatan Khusus dari Pembeli
+                </span>
+                {selectedOrder.customer_notes ? (
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded border border-amber-600/40">
+                    Pesan Pembeli
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-neutral-500">Tidak ada catatan</span>
+                )}
+              </div>
+              {selectedOrder.customer_notes ? (
+                <div className="bg-black/60 border border-amber-500/20 rounded-lg p-3 text-amber-100 font-medium whitespace-pre-wrap text-xs leading-relaxed">
+                  "{selectedOrder.customer_notes}"
+                </div>
+              ) : (
+                <p className="text-neutral-500 italic text-[11px]">
+                  Pembeli tidak meninggalkan catatan khusus untuk pesanan ini.
+                </p>
+              )}
             </div>
 
             {/* Items list */}
@@ -1142,6 +1331,14 @@ export const AdminPanel: React.FC = () => {
                 <p className="font-bold text-neutral-800">Telp: {selectedOrder.customer_phone}</p>
               </div>
 
+              {/* Catatan Pembeli pada Label */}
+              {selectedOrder.customer_notes && (
+                <div className="text-[10px] bg-yellow-50 border border-yellow-300 p-2 rounded text-neutral-900 border-b">
+                  <span className="font-bold block text-[9px] uppercase tracking-wider text-neutral-600">📝 CATATAN PEMBELI:</span>
+                  <p className="font-semibold text-black mt-0.5">"{selectedOrder.customer_notes}"</p>
+                </div>
+              )}
+
               {/* Items List */}
               <div className="text-[10px] space-y-1">
                 <span className="font-black uppercase text-neutral-500">ISI PAKET:</span>
@@ -1178,126 +1375,503 @@ export const AdminPanel: React.FC = () => {
       {/* MODAL: TAMBAH / EDIT PRODUK (CMS)                              */}
       {/* ============================================================== */}
       {isProductModalOpen && editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative w-full max-w-lg bg-[#141414] border border-neutral-800 rounded-2xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto no-scrollbar">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="relative w-full max-w-3xl bg-[#141414] border border-neutral-800 rounded-2xl shadow-2xl p-6 space-y-5 max-h-[92vh] overflow-y-auto no-scrollbar">
             <button
               onClick={() => {
                 setIsProductModalOpen(false);
                 setEditingProduct(null);
               }}
-              className="absolute top-4 right-4 p-1 rounded-lg text-neutral-400 hover:text-white"
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="font-racing font-bold text-lg text-white uppercase tracking-wider">
-              {editingProduct.id ? 'Edit Part Racing' : 'Tambah Part Racing Baru'}
-            </h3>
-
-            <form onSubmit={handleSaveProduct} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-neutral-300 font-bold mb-1">Nama Produk</label>
-                <input
-                  type="text"
-                  required
-                  value={editingProduct.name}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="bg-[#E50914] text-white text-[9px] font-black px-2 py-0.5 rounded tracking-widest uppercase">
+                  CMS PRODUK
+                </span>
+                <span className="text-neutral-500 text-xs">
+                  {editingProduct.id ? `ID: ${editingProduct.id}` : 'Baru'}
+                </span>
               </div>
+              <h3 className="font-racing font-bold text-xl text-white uppercase tracking-wider mt-1">
+                {editingProduct.id ? 'Edit Part Racing' : 'Tambah Part Racing Baru'}
+              </h3>
+              <p className="text-neutral-400 text-xs">
+                Kelola informasi part, kesesuaian motor, harga diskon, variasi produk, dan spesifikasi teknis.
+              </p>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-neutral-300 font-bold mb-1">Kategori</label>
-                  <select
-                    value={editingProduct.category}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                  >
-                    <option value="paket-upgrade">Paket Upgrade</option>
-                    <option value="cvt">CVT Part</option>
-                    <option value="pengereman">Pengereman</option>
-                    <option value="kaki-kaki">Kaki-Kaki & Shock</option>
-                    <option value="mesin">Mesin & Knalpot</option>
-                    <option value="aksesoris">Aksesoris</option>
-                  </select>
-                </div>
+            <form onSubmit={handleSaveProduct} className="space-y-5 text-xs">
+              {/* SECTION 1: Informasi Utama */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
+                <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-[#E50914]" />
+                  Informasi Dasar Produk
+                </span>
 
                 <div>
-                  <label className="block text-neutral-300 font-bold mb-1">Fitment Tag</label>
+                  <label className="block text-neutral-300 font-bold mb-1">
+                    Nama Part / Produk <span className="text-[#E50914]">*</span>
+                  </label>
                   <input
                     type="text"
-                    value={editingProduct.fitmentTag}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, fitmentTag: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-neutral-300 font-bold mb-1">Harga (Rp)</label>
-                  <input
-                    type="number"
                     required
-                    value={editingProduct.price}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, price: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    placeholder="Contoh: Super Roller BRT Black Diamond Heavy Duty"
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
                   />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">Kategori</label>
+                    <select
+                      value={editingProduct.category}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    >
+                      <option value="paket-upgrade">Paket Upgrade CVT</option>
+                      <option value="cvt">CVT Part</option>
+                      <option value="pengereman">Pengereman</option>
+                      <option value="kaki-kaki">Kaki-Kaki & Shock</option>
+                      <option value="mesin">Mesin & Knalpot</option>
+                      <option value="aksesoris">Aksesoris</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">Fitment Tag</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Plug & Play (PnP)"
+                      value={editingProduct.fitmentTag || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, fitmentTag: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">Kota Asal Pengiriman</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Jakarta Timur"
+                      value={editingProduct.originCity || 'Jakarta Timur'}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, originCity: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-neutral-300 font-bold mb-1">Stok Pcs</label>
+                  <label className="block text-neutral-300 font-bold mb-1 flex items-center justify-between">
+                    <span>Badge Promo Shopee (Optional)</span>
+                    <span className="text-[10px] text-neutral-500 font-normal">Muncul di label merah pojok produk</span>
+                  </label>
+                  <div className="flex gap-2 mb-2 flex-wrap">
+                    {PROMO_TAG_PRESETS.map((tag) => (
+                      <button
+                        type="button"
+                        key={tag}
+                        onClick={() => setEditingProduct({ ...editingProduct, promoTag: tag })}
+                        className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all ${
+                          editingProduct.promoTag === tag
+                            ? 'bg-[#D0011B] text-white shadow'
+                            : 'bg-black border border-neutral-700 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setEditingProduct({ ...editingProduct, promoTag: '' })}
+                      className="px-2 py-1 rounded text-[10px] bg-neutral-800 text-neutral-400 hover:text-white"
+                    >
+                      Kosongkan
+                    </button>
+                  </div>
                   <input
-                    type="number"
-                    required
-                    value={editingProduct.stock}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    type="text"
+                    placeholder="Atau ketik tag custom: MALL, Diskon 50%, dsb."
+                    value={editingProduct.promoTag || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, promoTag: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
                   />
+                </div>
+              </div>
+
+              {/* SECTION 2: Kesesuaian Tipe Motor */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
+                <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#E50914]" />
+                  Kesesuaian Motor (Bike Compatibility Filter)
+                </span>
+
+                <div>
+                  <label className="block text-neutral-300 font-bold mb-1.5">
+                    Pilih Kategori Motor (Bisa Lebih Dari Satu)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {BIKE_OPTIONS.map((b) => {
+                      const isSelected = (editingProduct.bikeCompatibility || []).includes(b.id);
+                      return (
+                        <button
+                          type="button"
+                          key={b.id}
+                          onClick={() => {
+                            const cur = editingProduct.bikeCompatibility || [];
+                            const next = isSelected ? cur.filter((x: string) => x !== b.id) : [...cur, b.id];
+                            setEditingProduct({ ...editingProduct, bikeCompatibility: next });
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#E50914] text-white shadow-md shadow-red-950/40 border border-red-500'
+                              : 'bg-black text-neutral-400 border border-neutral-700 hover:text-white'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5" />}
+                          <span>{b.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-neutral-300 font-bold mb-1">Berat (Gram)</label>
+                  <label className="block text-neutral-300 font-bold mb-1">
+                    Teks Detail Kompatibilitas Motor
+                  </label>
                   <input
-                    type="number"
-                    required
-                    value={editingProduct.weight_grams || 500}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, weight_grams: parseInt(e.target.value) || 500 })}
-                    className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    type="text"
+                    placeholder="Contoh: Vario 125/150/160, PCX 150/160, Beat ESP, Scoopy Karbu"
+                    value={editingProduct.compatibilityText || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, compatibilityText: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-neutral-300 font-bold mb-1">URL Foto Produk</label>
-                <input
-                  type="text"
-                  value={editingProduct.image}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                />
+              {/* SECTION 3: Harga, Diskon & Inventaris */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
+                <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                  <Percent className="w-3.5 h-3.5 text-[#E50914]" />
+                  Harga, Diskon & Inventaris
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">
+                      Harga Jual (Rp) <span className="text-[#E50914]">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      value={editingProduct.price}
+                      onChange={(e) => {
+                        const pr = parseInt(e.target.value) || 0;
+                        const orig = editingProduct.originalPrice || pr;
+                        const disc = orig > pr ? Math.round(((orig - pr) / orig) * 100) : 0;
+                        setEditingProduct({
+                          ...editingProduct,
+                          price: pr,
+                          discountPercent: disc,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">
+                      Harga Normal / Coret (Rp)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="Kosongkan jika tanpa diskon"
+                      value={editingProduct.originalPrice || ''}
+                      onChange={(e) => {
+                        const val = e.target.value ? parseInt(e.target.value) || 0 : null;
+                        const pr = editingProduct.price || 0;
+                        const disc = val && val > pr ? Math.round(((val - pr) / val) * 100) : 0;
+                        setEditingProduct({
+                          ...editingProduct,
+                          originalPrice: val,
+                          discountPercent: disc,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">
+                      Diskon Terhitung (%)
+                    </label>
+                    <div className="px-3 py-2 rounded-lg bg-black/60 border border-neutral-800 text-white flex items-center justify-between">
+                      <span className="font-racing font-bold text-sm text-[#D0011B]">
+                        {editingProduct.discountPercent ? `-${editingProduct.discountPercent}%` : '0% (Tanpa Diskon)'}
+                      </span>
+                      {editingProduct.originalPrice && editingProduct.originalPrice > editingProduct.price && (
+                        <span className="text-[10px] text-emerald-400">Hemat {formatIDR(editingProduct.originalPrice - editingProduct.price)}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1">
+                      Stok Fisik Tersedia (Pcs) <span className="text-[#E50914]">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      value={editingProduct.stock}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-neutral-300 font-bold mb-1 flex items-center justify-between">
+                      <span>Berat Barang (Gram) <span className="text-[#E50914]">*</span></span>
+                      <span className="text-[10px] text-neutral-500 font-normal">Digunakan untuk ongkir Biteship</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={10}
+                      value={editingProduct.weight_grams || 500}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, weight_grams: parseInt(e.target.value) || 500 })}
+                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-neutral-300 font-bold mb-1">Deskripsi Lengkap</label>
-                <textarea
-                  rows={3}
-                  value={editingProduct.description}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                />
+              {/* SECTION 4: Variasi Produk Shopee */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[#E50914]" />
+                      Variasi Produk (Shopee Variation Matrix)
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      Pembeli dapat memilih variasi ini sebelum menambahkan ke keranjang belanja.
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVarGroups([...varGroups, { name: '', optionsStr: '' }]);
+                    }}
+                    className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-[#E50914] text-white font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Tambah Grup</span>
+                  </button>
+                </div>
+
+                {varGroups.length === 0 ? (
+                  <div className="p-3 rounded-lg bg-black/40 border border-neutral-800 text-center text-neutral-500 text-xs">
+                    Belum ada grup variasi. Produk ini berstatus produk tunggal (tanpa variasi).
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {varGroups.map((g, idx) => {
+                      const optionsArray = g.optionsStr.split(',').map((s) => s.trim()).filter(Boolean);
+                      return (
+                        <div key={idx} className="p-3 rounded-lg bg-black border border-neutral-800 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              placeholder={`Nama Grup #${idx + 1} (Misal: Tipe Motor, Berat Roller, Ukuran)`}
+                              value={g.name}
+                              onChange={(e) => {
+                                const copy = [...varGroups];
+                                copy[idx].name = e.target.value;
+                                setVarGroups(copy);
+                              }}
+                              className="flex-1 px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs font-bold focus:outline-none focus:border-[#E50914]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVarGroups(varGroups.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1.5 rounded bg-neutral-800 hover:bg-red-950 text-neutral-400 hover:text-red-400"
+                              title="Hapus Grup Variasi"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-neutral-400 mb-1">
+                              Pilihan Opsi (Pisahkan dengan koma):
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Misal: 9 Gram, 10 Gram, 11 Gram, 12 Gram"
+                              value={g.optionsStr}
+                              onChange={(e) => {
+                                const copy = [...varGroups];
+                                copy[idx].optionsStr = e.target.value;
+                                setVarGroups(copy);
+                              }}
+                              className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914]"
+                            />
+                          </div>
+
+                          {optionsArray.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              <span className="text-[10px] text-neutral-500">Preview Pills:</span>
+                              {optionsArray.map((opt, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] px-2 py-0.5 rounded bg-red-950/60 border border-red-800 text-red-300 font-medium"
+                                >
+                                  {opt}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center gap-4 pt-2">
+              {/* SECTION 5: Foto & Deskripsi Produk */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
+                <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5 text-[#E50914]" />
+                  Foto & Deskripsi Produk
+                </span>
+
+                <div>
+                  <label className="block text-neutral-300 font-bold mb-1">URL Foto Produk</label>
+                  <div className="flex gap-3 items-center">
+                    <img
+                      src={editingProduct.image || '/images/default.jpg'}
+                      alt="Preview"
+                      referrerPolicy="no-referrer"
+                      className="w-14 h-14 rounded-lg object-cover bg-black border border-neutral-700 flex-shrink-0"
+                      onError={(e: any) => {
+                        e.target.src = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60';
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="https://images.unsplash.com/..."
+                      value={editingProduct.image || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
+                      className="flex-1 px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-bold mb-1">Deskripsi Lengkap Produk</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Jelaskan keunggulan part, spesifikasi material, dan garansi..."
+                    value={editingProduct.description || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 6: Spesifikasi Part Teknis */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#E50914]" />
+                    Spesifikasi Part Teknis (Tabel Rincian)
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpecRows([...specRows, { key: '', value: '' }]);
+                    }}
+                    className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-[#E50914] text-white font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Tambah Baris</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {specRows.map((row, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nama Spek (Misal: Bahan, Merk, Garansi)"
+                        value={row.key}
+                        onChange={(e) => {
+                          const copy = [...specRows];
+                          copy[idx].key = e.target.value;
+                          setSpecRows(copy);
+                        }}
+                        className="w-1/3 px-2.5 py-1.5 rounded bg-black border border-neutral-700 text-white text-xs font-semibold focus:outline-none focus:border-[#E50914]"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Nilai (Misal: Aluminium CNC 6061, BRT, 1 Bulan)"
+                        value={row.value}
+                        onChange={(e) => {
+                          const copy = [...specRows];
+                          copy[idx].value = e.target.value;
+                          setSpecRows(copy);
+                        }}
+                        className="flex-1 px-2.5 py-1.5 rounded bg-black border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSpecRows(specRows.filter((_, i) => i !== idx));
+                        }}
+                        className="p-1.5 rounded bg-neutral-800 hover:bg-red-950 text-neutral-400 hover:text-red-400"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION 7: Visibilitas & Status Toko */}
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 flex flex-wrap items-center gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingProduct.isPromo}
                     onChange={(e) => setEditingProduct({ ...editingProduct, isPromo: e.target.checked })}
-                    className="rounded text-[#E50914]"
+                    className="w-4 h-4 rounded text-[#E50914] bg-black border-neutral-700"
                   />
-                  <span>Tampilkan di Promo Flash</span>
+                  <span className="font-bold text-neutral-200">Tampilkan di Promo Flash Sale</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingProduct.isPaketUpgrade}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, isPaketUpgrade: e.target.checked })}
+                    className="w-4 h-4 rounded text-[#E50914] bg-black border-neutral-700"
+                  />
+                  <span className="font-bold text-neutral-200">Paket Upgrade CVT Lengkap</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -1305,18 +1879,19 @@ export const AdminPanel: React.FC = () => {
                     type="checkbox"
                     checked={editingProduct.isActive !== false}
                     onChange={(e) => setEditingProduct({ ...editingProduct, isActive: e.target.checked })}
-                    className="rounded text-[#E50914]"
+                    className="w-4 h-4 rounded text-[#E50914] bg-black border-neutral-700"
                   />
-                  <span>Status Aktif di Katalog</span>
+                  <span className="font-bold text-emerald-400">Status Aktif (Tayang di Toko)</span>
                 </label>
               </div>
 
-              <div className="pt-3 flex gap-2">
+              {/* Action Buttons */}
+              <div className="pt-2 flex gap-3">
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-lg bg-[#E50914] hover:bg-red-700 text-white font-bold cursor-pointer"
+                  className="flex-1 py-3 rounded-xl bg-[#E50914] hover:bg-red-700 text-white font-racing font-bold tracking-wider text-sm shadow-lg shadow-red-950/50 cursor-pointer transition-all"
                 >
-                  Simpan Produk
+                  SIMPAN PART RACING KE KATALOG
                 </button>
                 <button
                   type="button"
@@ -1324,7 +1899,7 @@ export const AdminPanel: React.FC = () => {
                     setIsProductModalOpen(false);
                     setEditingProduct(null);
                   }}
-                  className="px-4 py-2.5 rounded-lg bg-neutral-800 text-neutral-300 font-bold"
+                  className="px-6 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold transition-colors"
                 >
                   Batal
                 </button>

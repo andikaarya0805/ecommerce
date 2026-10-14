@@ -41,6 +41,7 @@ function createInMemoryDb() {
       specs: JSON.stringify(p.specs || {}),
       isPromo: p.isPromo ? 1 : 0,
       isPaketUpgrade: p.isPaketUpgrade ? 1 : 0,
+      variation_groups: p.variationGroups ? JSON.stringify(p.variationGroups) : null,
       weight_grams: p.weight_grams || 500,
       is_active: 1,
       created_at: new Date().toISOString(),
@@ -192,6 +193,7 @@ function createInMemoryDb() {
               customer_email,
               customer_phone,
               shipping_address,
+              customer_notes,
               shipping_province,
               shipping_city,
               shipping_district,
@@ -205,7 +207,6 @@ function createInMemoryDb() {
               grand_total,
               status,
               payment_method,
-              payment_url,
               expired_at,
             ] = params;
             orders.unshift({
@@ -216,6 +217,7 @@ function createInMemoryDb() {
               customer_email,
               customer_phone,
               shipping_address,
+              customer_notes: customer_notes || null,
               shipping_province,
               shipping_city,
               shipping_district,
@@ -229,7 +231,7 @@ function createInMemoryDb() {
               grand_total,
               status: status || 'PENDING',
               payment_method,
-              payment_url,
+              payment_url: null,
               expired_at,
               created_at: new Date().toISOString(),
             });
@@ -305,6 +307,58 @@ function createInMemoryDb() {
             const [st, id] = params;
             const p = products.find((pr: any) => pr.id === id);
             if (p) p.is_active = st;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('INSERT INTO products')) {
+            const [
+              id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
+              discountPercent, promoTag, rating, soldCount, image, description, specs,
+              isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, is_active
+            ] = params;
+            products.unshift({
+              id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
+              discountPercent, promoTag, rating: rating || 5.0, soldCount: soldCount || 0,
+              image, description, specs, isPromo, isPaketUpgrade, stock, weight_grams,
+              originCity: originCity || 'Jakarta Timur',
+              variation_groups, is_active: is_active ?? 1,
+              created_at: new Date().toISOString()
+            });
+            return { changes: 1, lastInsertRowid: products.length };
+          }
+          if (cleanSql.includes('UPDATE products SET') && cleanSql.includes('name = ?')) {
+            const [
+              name, category, compatibilityText, fitmentTag, price, originalPrice,
+              discountPercent, promoTag, image, description, specs, isPromo, isPaketUpgrade,
+              stock, weight_grams, originCity, variation_groups, is_active, id
+            ] = params;
+            const p = products.find((pr: any) => pr.id === id);
+            if (p) {
+              Object.assign(p, {
+                name, category, compatibilityText, fitmentTag, price, originalPrice,
+                discountPercent, promoTag, image, description, specs, isPromo, isPaketUpgrade,
+                stock, weight_grams, originCity, variation_groups, is_active
+              });
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('DELETE FROM products WHERE id = ?')) {
+            const [id] = params;
+            const idx = products.findIndex((pr: any) => pr.id === id);
+            if (idx !== -1) products.splice(idx, 1);
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('product_bike_compatibility') && cleanSql.includes('INSERT')) {
+            const [product_id, bike_type] = params;
+            product_bike_compat.push({ product_id, bike_type });
+            return { changes: 1, lastInsertRowid: product_bike_compat.length };
+          }
+          if (cleanSql.includes('DELETE FROM product_bike_compatibility WHERE product_id = ?')) {
+            const [product_id] = params;
+            for (let i = product_bike_compat.length - 1; i >= 0; i--) {
+              if (product_bike_compat[i].product_id === product_id) {
+                product_bike_compat.splice(i, 1);
+              }
+            }
             return { changes: 1, lastInsertRowid: 0 };
           }
           if (cleanSql.includes('UPDATE vouchers SET used_count = used_count + 1')) {
@@ -607,6 +661,8 @@ export function initDb() {
     ensureColumn('orders', 'biteship_order_id', 'TEXT');
     ensureColumn('orders', 'biteship_tracking_id', 'TEXT');
     ensureColumn('orders', 'destination_area_id', 'TEXT');
+    ensureColumn('orders', 'customer_notes', 'TEXT');
+    ensureColumn('products', 'variation_groups', 'TEXT');
 
     try {
       const prods = db.prepare('SELECT id, name, slug FROM products').all() as any[];
