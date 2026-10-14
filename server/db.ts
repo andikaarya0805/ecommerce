@@ -153,6 +153,12 @@ export function initDb() {
   ensureColumn('vouchers', 'valid_until', 'TEXT');
   ensureColumn('vouchers', 'is_active', 'INTEGER DEFAULT 1');
 
+  // Ensure Midtrans and Biteship columns exist in orders
+  ensureColumn('orders', 'snap_token', 'TEXT');
+  ensureColumn('orders', 'biteship_order_id', 'TEXT');
+  ensureColumn('orders', 'biteship_tracking_id', 'TEXT');
+  ensureColumn('orders', 'destination_area_id', 'TEXT');
+
   // Fill slugs and weights for existing products
   try {
     const prods = db.prepare('SELECT id, name, slug FROM products').all() as any[];

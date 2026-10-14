@@ -555,7 +555,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   )}
                 </button>
               </form>
-            ) : items.length === 0 ? (
+            )) : items.length === 0 ? (
               /* Empty Cart State */
               <div className="py-16 text-center">
                 <div className="w-16 h-16 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center mx-auto mb-3">
