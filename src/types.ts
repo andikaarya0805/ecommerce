@@ -10,6 +10,17 @@ export type MainTabType = 'semua' | 'paket-upgrade' | 'kategori' | 'promo';
 
 export type SortOption = 'populer' | 'terbaru' | 'terlaris' | 'harga-asc' | 'harga-desc';
 
+export interface ProductVariationOption {
+  name: string;
+  priceModifier?: number;
+  stock?: number;
+}
+
+export interface ProductVariationGroup {
+  name: string;
+  options: (string | ProductVariationOption)[];
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -34,6 +45,7 @@ export interface Product {
   originCity: string;
   is_active?: boolean;
   created_at?: string;
+  variationGroups?: ProductVariationGroup[];
 }
 
 export interface Voucher {

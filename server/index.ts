@@ -568,10 +568,14 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
       // Deduct stock immediately in transaction
       deductStock.run(item.quantity, prod.id);
 
+      const snapshotName = item.selectedVariant
+        ? `${prod.name} [Variasi: ${item.selectedVariant}]`
+        : prod.name;
+
       itemsSnapshot.push({
         id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
         productId: prod.id,
-        name: prod.name,
+        name: snapshotName,
         price: prod.price,
         quantity: item.quantity,
         subtotal: itemSubtotal,

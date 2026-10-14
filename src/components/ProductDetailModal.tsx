@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Product, UserBike } from '../types';
 import { formatIDR } from './ProductCard';
-import { X, Star, ShoppingBag, CheckCircle, ShieldAlert, Zap, Truck, MessageCircle } from 'lucide-react';
+import {
+  getProductVariationGroups,
+  getOptionName,
+  getOptionPriceModifier,
+} from '../data/productVariations';
+import { X, Star, ShoppingBag, CheckCircle, ShieldAlert, Zap, Truck, MessageCircle, Check, AlertCircle } from 'lucide-react';
 
 interface ProductDetailModalProps {
   product: Product | null;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity: number) => void;
+  onAddToCart: (product: Product, quantity: number, selectedVariant?: string) => void;
+  onBuyNow?: (product: Product, quantity: number, selectedVariant?: string) => void;
   userBike: UserBike | null;
   onOpenGarage: () => void;
 }
@@ -15,24 +21,97 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product,
   onClose,
   onAddToCart,
+  onBuyNow,
   userBike,
   onOpenGarage,
 }) => {
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<'deskripsi' | 'spesifikasi'>('deskripsi');
+  const [selectedOptions, setSelectedOptions] = useState<{ [groupName: string]: string }>({});
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const variationGroups = useMemo(() => {
+    if (!product) return [];
+    return getProductVariationGroups(product);
+  }, [product]);
+
+  useEffect(() => {
+    if (product) {
+      const initial: { [groupName: string]: string } = {};
+      const groups = getProductVariationGroups(product);
+
+      groups.forEach((group, index) => {
+        if (index === 0 && userBike) {
+          const matchingOpt = group.options.find((opt) => {
+            const name = getOptionName(opt).toLowerCase();
+            const bikeName = userBike.name.toLowerCase();
+            return (
+              (bikeName.includes('vario') && name.includes('vario')) ||
+              (bikeName.includes('pcx') && name.includes('pcx')) ||
+              (bikeName.includes('nmax') && name.includes('nmax')) ||
+              (bikeName.includes('aerox') && name.includes('aerox')) ||
+              (bikeName.includes('beat') && name.includes('beat')) ||
+              (bikeName.includes('scoopy') && name.includes('scoopy')) ||
+              (bikeName.includes('mio') && name.includes('mio'))
+            );
+          });
+          if (matchingOpt) {
+            initial[group.name] = getOptionName(matchingOpt);
+            return;
+          }
+        }
+        if (group.options.length > 0) {
+          initial[group.name] = getOptionName(group.options[0]);
+        }
+      });
+
+      setSelectedOptions(initial);
+      setQuantity(1);
+      setValidationError(null);
+    }
+  }, [product, userBike]);
 
   if (!product) return null;
 
   const isCompatibleWithUser =
-    userBike && product.bikeCompatibility.includes(userBike.type);
+    userBike && product.bikeCompatibility?.includes(userBike.type);
+
+  let dynamicPrice = product.price;
+  let dynamicOriginalPrice = product.originalPrice || product.price;
+
+  variationGroups.forEach((group) => {
+    const selected = selectedOptions[group.name];
+    if (selected) {
+      const opt = group.options.find((o) => getOptionName(o) === selected);
+      if (opt) {
+        const mod = getOptionPriceModifier(opt);
+        dynamicPrice += mod;
+        dynamicOriginalPrice += mod;
+      }
+    }
+  });
+
+  const variantString = Object.values(selectedOptions).filter(Boolean).join(' • ');
+
+  const handleSelectOption = (groupName: string, optionName: string) => {
+    setSelectedOptions((prev) => ({
+      ...prev,
+      [groupName]: optionName,
+    }));
+    setValidationError(null);
+  };
 
   const handleAdd = () => {
-    onAddToCart(product, quantity);
+    onAddToCart(product, quantity, variantString || undefined);
     onClose();
   };
 
-  const handleBuyNow = () => {
-    onAddToCart(product, quantity);
+  const handleBuy = () => {
+    if (onBuyNow) {
+      onBuyNow(product, quantity, variantString || undefined);
+    } else {
+      onAddToCart(product, quantity, variantString || undefined);
+    }
     onClose();
   };
 
@@ -101,11 +180,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             {/* Price Box */}
             <div className="mt-2.5 flex items-baseline gap-2">
               <span className="font-racing font-black text-xl sm:text-2xl text-[#E50914]">
-                {formatIDR(product.price)}
+                {formatIDR(dynamicPrice)}
               </span>
-              {product.originalPrice > product.price && (
+              {dynamicOriginalPrice > dynamicPrice && (
                 <span className="text-xs text-neutral-500 line-through">
-                  {formatIDR(product.originalPrice)}
+                  {formatIDR(dynamicOriginalPrice)}
                 </span>
               )}
               {product.discountPercent > 0 && (
@@ -198,6 +277,72 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               )}
             </div>
 
+            {/* Shopee-style Variations Section */}
+            {variationGroups.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-200 uppercase tracking-wider">
+                    Pilihan Variasi Produk
+                  </span>
+                  {variantString && (
+                    <span className="text-[11px] text-red-400 font-semibold truncate max-w-[200px]">
+                      {variantString}
+                    </span>
+                  )}
+                </div>
+
+                {validationError && (
+                  <div className="p-2 rounded bg-red-950/70 border border-red-800 text-red-200 text-xs flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                    <span>{validationError}</span>
+                  </div>
+                )}
+
+                {variationGroups.map((group) => {
+                  const currentSelected = selectedOptions[group.name];
+                  return (
+                    <div key={group.name} className="space-y-1.5">
+                      <div className="text-[11px] font-bold text-neutral-400">
+                        {group.name}:
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {group.options.map((opt) => {
+                          const optName = getOptionName(opt);
+                          const optMod = getOptionPriceModifier(opt);
+                          const isSelected = currentSelected === optName;
+
+                          return (
+                            <button
+                              key={optName}
+                              type="button"
+                              onClick={() => handleSelectOption(group.name, optName)}
+                              className={`group relative px-2.5 py-1.5 rounded text-xs transition-all cursor-pointer text-left ${
+                                isSelected
+                                  ? 'bg-[#D0011B]/15 border-2 border-[#D0011B] text-[#D0011B] font-bold shadow-sm'
+                                  : 'bg-[#1e1e1e] border border-neutral-700 hover:border-neutral-500 text-neutral-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>{optName}</span>
+                                {optMod > 0 && (
+                                  <span className="text-[10px] opacity-80">(+{formatIDR(optMod)})</span>
+                                )}
+                              </div>
+                              {isSelected && (
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#D0011B] rounded-tl flex items-center justify-center">
+                                  <Check className="w-2 h-2 text-white stroke-[3.5]" />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Quantity Selector */}
             <div className="mt-4 pt-3 border-t border-neutral-800 flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-300">Jumlah Pembelian:</span>
@@ -245,7 +390,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
 
           <button
-            onClick={handleBuyNow}
+            onClick={handleBuy}
             className="flex-1 bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-xs sm:text-sm py-2.5 px-3 rounded-lg shadow-lg shadow-red-950/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
           >
             <span>Beli Sekarang</span>

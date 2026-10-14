@@ -13,6 +13,7 @@ import { ProductSortBar } from './components/ProductSortBar';
 import { ProductGrid } from './components/ProductGrid';
 import { VerticalCategoryList } from './components/VerticalCategoryList';
 import { ProductDetailModal } from './components/ProductDetailModal';
+import { ShopeeVariationModal } from './components/ShopeeVariationModal';
 import { CartDrawer } from './components/CartDrawer';
 import { GarageModal } from './components/GarageModal';
 import { FooterTrustBadges } from './components/FooterTrustBadges';
@@ -91,6 +92,7 @@ function StoreFront() {
 
   // Modals state
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [variationProduct, setVariationProduct] = useState<Product | null>(null);
   const [isGarageModalOpen, setIsGarageModalOpen] = useState<boolean>(false);
 
   // Toast notifications
@@ -109,18 +111,29 @@ function StoreFront() {
   };
 
   // Cart Handlers
-  const handleAddToCart = (product: Product, e?: React.MouseEvent, quantity = 1) => {
+  const handleAddToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    addToCart(product, quantity);
-    addToast('Ditambahkan ke Keranjang', `${product.name.slice(0, 38)}...`);
+    // Open Shopee-style variation selector modal
+    setVariationProduct(product);
   };
 
-  const handleUpdateCartQuantity = (productId: string, delta: number) => {
-    updateQuantity(productId, delta);
+  const handleConfirmVariationAddToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
+    addToCart(product, quantity, selectedVariant);
+    const variantTag = selectedVariant ? ` [${selectedVariant}]` : '';
+    addToast('Ditambahkan ke Keranjang', `${product.name.slice(0, 32)}...${variantTag}`);
   };
 
-  const handleRemoveCartItem = (productId: string) => {
-    removeItem(productId);
+  const handleConfirmVariationBuyNow = (product: Product, quantity = 1, selectedVariant?: string) => {
+    addToCart(product, quantity, selectedVariant);
+    setIsCartOpen(true);
+  };
+
+  const handleUpdateCartQuantity = (productId: string, delta: number, selectedVariant?: string) => {
+    updateQuantity(productId, delta, selectedVariant);
+  };
+
+  const handleRemoveCartItem = (productId: string, selectedVariant?: string) => {
+    removeItem(productId, selectedVariant);
     addToast('Item Dihapus', 'Produk dikeluarkan dari keranjang belanja.');
   };
 
@@ -286,7 +299,7 @@ function StoreFront() {
             <ProductGrid
               products={filteredProducts}
               userBike={userBike}
-              onAddToCart={(prod, e) => handleAddToCart(prod, e, 1)}
+              onAddToCart={(prod, e) => handleAddToCart(prod, e)}
               onSelectProduct={(prod) => setSelectedProduct(prod)}
               onResetFilters={() => {
                 setSelectedBikeType('all');
@@ -306,10 +319,20 @@ function StoreFront() {
       <WhatsAppFloatingButton />
 
       {/* Modals & Drawers */}
+      <ShopeeVariationModal
+        product={variationProduct}
+        isOpen={!!variationProduct}
+        onClose={() => setVariationProduct(null)}
+        onAddToCart={handleConfirmVariationAddToCart}
+        onBuyNow={handleConfirmVariationBuyNow}
+        userBike={userBike}
+      />
+
       <ProductDetailModal
         product={selectedProduct}
         onClose={() => setSelectedProduct(null)}
-        onAddToCart={(prod, qty) => handleAddToCart(prod, undefined, qty)}
+        onAddToCart={handleConfirmVariationAddToCart}
+        onBuyNow={handleConfirmVariationBuyNow}
         userBike={userBike}
         onOpenGarage={() => setIsGarageModalOpen(true)}
       />

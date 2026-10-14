@@ -32,8 +32,11 @@ export const CartPage: React.FC = () => {
     subtotal,
   } = useCart();
 
+  const getItemKey = (item: { product: { id: string }; selectedVariant?: string }) =>
+    `${item.product.id}__${item.selectedVariant || ''}`;
+
   // Selected items state for checkout (Shopee style allows partial checkout)
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => items.map((i) => i.product.id));
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => items.map(getItemKey));
 
   // Sync selectedIds with items
   const allSelected = items.length > 0 && selectedIds.length === items.length;
@@ -42,20 +45,20 @@ export const CartPage: React.FC = () => {
     if (allSelected) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(items.map((i) => i.product.id));
+      setSelectedIds(items.map(getItemKey));
     }
   };
 
-  const toggleSelectItem = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter((item) => item !== id));
+  const toggleSelectItem = (key: string) => {
+    if (selectedIds.includes(key)) {
+      setSelectedIds(selectedIds.filter((k) => k !== key));
     } else {
-      setSelectedIds([...selectedIds, id]);
+      setSelectedIds([...selectedIds, key]);
     }
   };
 
   // Selected items subtotal
-  const selectedItems = items.filter((i) => selectedIds.includes(i.product.id));
+  const selectedItems = items.filter((i) => selectedIds.includes(getItemKey(i)));
   const selectedSubtotal = selectedItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
 
   // Voucher discount
@@ -188,11 +191,12 @@ export const CartPage: React.FC = () => {
 
               {/* Items List */}
               <div className="divide-y divide-neutral-100 dark:divide-neutral-800/70 p-3 sm:p-4 space-y-4">
-                {items.map((item) => {
-                  const isSelected = selectedIds.includes(item.product.id);
+                {items.map((item, index) => {
+                  const itemKey = getItemKey(item);
+                  const isSelected = selectedIds.includes(itemKey);
                   return (
                     <div
-                      key={item.product.id}
+                      key={`${itemKey}-${index}`}
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 first:pt-0"
                     >
                       {/* Product Checkbox + Image + Title */}
@@ -200,7 +204,7 @@ export const CartPage: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => toggleSelectItem(item.product.id)}
+                          onChange={() => toggleSelectItem(itemKey)}
                           className="w-4 h-4 accent-[#EE4D2D] rounded cursor-pointer flex-shrink-0"
                         />
                         <img
@@ -212,9 +216,17 @@ export const CartPage: React.FC = () => {
                           <h4 className="text-xs sm:text-sm font-bold text-neutral-900 dark:text-white line-clamp-2">
                             {item.product.name}
                           </h4>
-                          <span className="inline-block text-[10px] bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 px-1.5 py-0.5 rounded">
-                            Fitment: {item.product.fitmentTag || 'Universal'}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="inline-block text-[10px] bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 px-1.5 py-0.5 rounded">
+                              Fitment: {item.product.fitmentTag || 'Universal'}
+                            </span>
+                            {item.selectedVariant && (
+                              <span className="inline-flex items-center gap-1 text-[10px] bg-red-500/10 dark:bg-red-950/70 border border-red-500/30 dark:border-red-800 text-[#EE4D2D] dark:text-red-300 px-2 py-0.5 rounded font-medium">
+                                <span className="font-bold">Variasi:</span>
+                                <span className="truncate max-w-[160px]">{item.selectedVariant}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -236,8 +248,8 @@ export const CartPage: React.FC = () => {
                         <span className="text-neutral-400 sm:hidden text-[10px] mr-2">Jumlah:</span>
                         <div className="flex items-center border border-neutral-300 dark:border-neutral-700 rounded overflow-hidden">
                           <button
-                            onClick={() => updateQuantity(item.product.id, -1)}
-                            className="px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            onClick={() => updateQuantity(item.product.id, -1, item.selectedVariant)}
+                            className="px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                           >
                             <Minus className="w-3 h-3 text-neutral-600 dark:text-neutral-400" />
                           </button>
@@ -245,8 +257,8 @@ export const CartPage: React.FC = () => {
                             {item.quantity}
                           </span>
                           <button
-                            onClick={() => updateQuantity(item.product.id, 1)}
-                            className="px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                            onClick={() => updateQuantity(item.product.id, 1, item.selectedVariant)}
+                            className="px-2 py-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                           >
                             <Plus className="w-3 h-3 text-neutral-600 dark:text-neutral-400" />
                           </button>
@@ -264,8 +276,8 @@ export const CartPage: React.FC = () => {
                       {/* Delete */}
                       <div className="sm:w-1/12 text-right">
                         <button
-                          onClick={() => removeItem(item.product.id)}
-                          className="p-1.5 text-neutral-400 hover:text-red-500 rounded transition-colors"
+                          onClick={() => removeItem(item.product.id, item.selectedVariant)}
+                          className="p-1.5 text-neutral-400 hover:text-red-500 rounded transition-colors cursor-pointer"
                           title="Hapus Produk"
                         >
                           <Trash2 className="w-4 h-4" />

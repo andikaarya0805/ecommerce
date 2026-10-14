@@ -322,6 +322,7 @@ export const CheckoutPage: React.FC = () => {
         items: items.map((i) => ({
           productId: i.product.id,
           quantity: i.quantity,
+          selectedVariant: i.selectedVariant,
         })),
         voucherCode: appliedVoucher?.code || null,
         customer: {
@@ -627,9 +628,9 @@ export const CheckoutPage: React.FC = () => {
 
           {/* Product Items Table */}
           <div className="divide-y divide-neutral-100 dark:divide-neutral-800/60 p-4 space-y-4">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <div
-                key={item.product.id}
+                key={`${item.product.id}-${item.selectedVariant || index}`}
                 className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 first:pt-0"
               >
                 <div className="flex items-center gap-3 flex-1">
@@ -647,6 +648,11 @@ export const CheckoutPage: React.FC = () => {
                         {item.product.category}
                       </span>
                       <span>Fitment: {item.product.fitmentTag || 'Universal'}</span>
+                      {item.selectedVariant && (
+                        <span className="bg-red-500/10 dark:bg-red-950/70 border border-red-500/30 dark:border-red-800 text-[#EE4D2D] dark:text-red-300 px-2 py-0.5 rounded font-semibold">
+                          Variasi: {item.selectedVariant}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

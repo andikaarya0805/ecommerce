@@ -4,9 +4,9 @@ import { useAuth } from './AuthContext';
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (product: Product, quantity?: number) => void;
-  updateQuantity: (productId: string, delta: number) => void;
-  removeItem: (productId: string) => void;
+  addToCart: (product: Product, quantity?: number, selectedVariant?: string) => void;
+  updateQuantity: (productId: string, delta: number, selectedVariant?: string) => void;
+  removeItem: (productId: string, selectedVariant?: string) => void;
   clearCart: () => void;
   appliedVoucher: Voucher | null;
   setAppliedVoucher: (voucher: Voucher | null) => void;
@@ -72,25 +72,29 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [items, user?.id]);
 
-  const addToCart = (product: Product, quantity = 1) => {
+  const addToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
     setItems((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.product.id === product.id
+      const variantKey = selectedVariant?.trim() || '';
+      const existingIndex = prev.findIndex(
+        (item) => item.product.id === product.id && (item.selectedVariant?.trim() || '') === variantKey
+      );
+      if (existingIndex > -1) {
+        return prev.map((item, idx) =>
+          idx === existingIndex
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
-      return [...prev, { product, quantity }];
+      return [...prev, { product, quantity, selectedVariant: variantKey || undefined }];
     });
   };
 
-  const updateQuantity = (productId: string, delta: number) => {
+  const updateQuantity = (productId: string, delta: number, selectedVariant?: string) => {
     setItems((prev) =>
       prev
         .map((item) => {
-          if (item.product.id === productId) {
+          const matchVariant = selectedVariant === undefined || (item.selectedVariant?.trim() || '') === (selectedVariant?.trim() || '');
+          if (item.product.id === productId && matchVariant) {
             const newQty = item.quantity + delta;
             return newQty > 0 ? { ...item, quantity: newQty } : null;
           }
@@ -100,8 +104,16 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
-  const removeItem = (productId: string) => {
-    setItems((prev) => prev.filter((item) => item.product.id !== productId));
+  const removeItem = (productId: string, selectedVariant?: string) => {
+    setItems((prev) =>
+      prev.filter((item) => {
+        if (item.product.id !== productId) return true;
+        if (selectedVariant !== undefined) {
+          return (item.selectedVariant?.trim() || '') !== (selectedVariant?.trim() || '');
+        }
+        return false;
+      })
+    );
   };
 
   const clearCart = () => {

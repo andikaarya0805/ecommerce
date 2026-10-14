@@ -6,5 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
-data/
+/data/
+!src/data/
 *.db
+*.mp4
+

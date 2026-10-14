@@ -1737,10 +1737,11 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
       const itemSubtotal = prod.price * item.quantity;
       calculatedSubtotal += itemSubtotal;
       deductStock.run(item.quantity, prod.id);
+      const snapshotName = item.selectedVariant ? `${prod.name} [Variasi: ${item.selectedVariant}]` : prod.name;
       itemsSnapshot.push({
         id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
         productId: prod.id,
-        name: prod.name,
+        name: snapshotName,
         price: prod.price,
         quantity: item.quantity,
         subtotal: itemSubtotal

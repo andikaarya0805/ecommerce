@@ -25,8 +25,8 @@ interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
-  onUpdateQuantity: (productId: string, delta: number) => void;
-  onRemoveItem: (productId: string) => void;
+  onUpdateQuantity: (productId: string, delta: number, selectedVariant?: string) => void;
+  onRemoveItem: (productId: string, selectedVariant?: string) => void;
   vouchers: Voucher[];
   appliedVoucher: Voucher | null;
   onApplyVoucher: (voucher: Voucher | null) => void;
@@ -192,6 +192,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       const checkoutItems = items.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
+        selectedVariant: item.selectedVariant,
       }));
 
       const payload = {
@@ -594,16 +595,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             ) : (
               /* Cart Items List */
               <div className="space-y-3">
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <div
-                    key={item.product.id}
+                    key={`${item.product.id}-${item.selectedVariant || index}`}
                     className="flex gap-3 p-2.5 rounded-lg bg-neutral-900 border border-neutral-800"
                   >
                     <img
                       src={item.product.image}
                       alt={item.product.name}
                       referrerPolicy="no-referrer"
-                      className="w-16 h-16 rounded object-cover flex-shrink-0 bg-black"
+                      className="w-16 h-16 rounded object-cover flex-shrink-0 bg-black border border-neutral-800"
                     />
 
                     <div className="flex-1 flex flex-col justify-between">
@@ -611,9 +612,19 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         <h5 className="text-xs font-bold text-neutral-100 line-clamp-1">
                           {item.product.name}
                         </h5>
-                        <div className="text-[10px] text-neutral-400">
-                          {item.product.fitmentTag}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-neutral-400">
+                            {item.product.fitmentTag}
+                          </span>
                         </div>
+                        {item.selectedVariant && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 text-[9px] bg-red-950/80 border border-red-800/80 text-red-300 px-1.5 py-0.5 rounded font-medium">
+                              <span className="text-red-400 font-bold">Variasi:</span>
+                              <span className="truncate max-w-[170px]">{item.selectedVariant}</span>
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-between mt-2">
@@ -624,8 +635,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         <div className="flex items-center gap-2">
                           <div className="flex items-center border border-neutral-700 rounded bg-black/50">
                             <button
-                              onClick={() => onUpdateQuantity(item.product.id, -1)}
-                              className="px-2 py-0.5 text-xs text-neutral-400 hover:text-white"
+                              onClick={() => onUpdateQuantity(item.product.id, -1, item.selectedVariant)}
+                              className="px-2 py-0.5 text-xs text-neutral-400 hover:text-white cursor-pointer"
                             >
                               <Minus className="w-3 h-3" />
                             </button>
@@ -633,15 +644,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                               {item.quantity}
                             </span>
                             <button
-                              onClick={() => onUpdateQuantity(item.product.id, 1)}
-                              className="px-2 py-0.5 text-xs text-neutral-400 hover:text-white"
+                              onClick={() => onUpdateQuantity(item.product.id, 1, item.selectedVariant)}
+                              className="px-2 py-0.5 text-xs text-neutral-400 hover:text-white cursor-pointer"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
                           </div>
 
                           <button
-                            onClick={() => onRemoveItem(item.product.id)}
+                            onClick={() => onRemoveItem(item.product.id, item.selectedVariant)}
                             className="p-1 text-neutral-500 hover:text-red-400 cursor-pointer"
                             aria-label="Hapus"
                           >
