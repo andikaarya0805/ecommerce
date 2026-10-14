@@ -4,8 +4,7 @@ import { CategoryItem } from './components/VerticalCategoryList';
 import { INITIAL_PRODUCTS, CATEGORY_ITEMS } from './data/products';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { Header } from './components/Header';
-import { ShopeeStoreHeader } from './components/ShopeeStoreHeader';
-import { HeroBannerCarousel } from './components/HeroBannerCarousel';
+import { BrandHeroSection } from './components/BrandHeroSection';
 import { ClaimableVouchers } from './components/ClaimableVouchers';
 import { CategoryNavTabs } from './components/CategoryNavTabs';
 import { VehicleFilterSubBar } from './components/VehicleFilterSubBar';
@@ -249,8 +248,8 @@ function StoreFront() {
         onOpenGarage={() => setIsGarageModalOpen(true)}
       />
 
-      {/* Shopee Official Store Profile Banner & Tabs */}
-      <ShopeeStoreHeader
+      {/* Brand Hero Section & Store Tabs */}
+      <BrandHeroSection
         totalProducts={products.length}
         selectedBike={userBike}
         onOpenGarage={() => setIsGarageModalOpen(true)}
@@ -259,11 +258,7 @@ function StoreFront() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto">
-        {/* Dynamic Promotional Hero Carousel */}
-        <HeroBannerCarousel
-          onSelectTab={setActiveTab}
-        />
+      <main id="product-catalog-section" className="flex-1 max-w-7xl w-full mx-auto">
 
         {/* Claimable Store Vouchers Horizontal Section */}
         <ClaimableVouchers
