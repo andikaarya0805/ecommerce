@@ -508,15 +508,21 @@ export const OrderHistoryPage: React.FC = () => {
 
                     {/* Paid Actions */}
                     {ord.status === 'PAID' && (
-                      <a
-                        href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Garage,%20saya%20ingin%20tanya%20status%20pengemasan%20invoice%20${encodeURIComponent(ord.invoice_number)}.`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1"
+                      <button
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent('open-jawir-chat', {
+                              detail: {
+                                initialMessage: `Halo Admin Jawir Garage, saya mau tanya status pesanan nomor invoice ${ord.invoice_number}`,
+                              },
+                            })
+                          );
+                        }}
+                        className="px-3.5 py-1.5 rounded bg-neutral-900 border border-neutral-700 hover:border-red-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
                       >
-                        <MessageCircle className="w-3.5 h-3.5" />
+                        <MessageCircle className="w-3.5 h-3.5 text-[#E50914]" />
                         <span>Chat Penjual</span>
-                      </a>
+                      </button>
                     )}
 
                     {/* Shipped Actions */}

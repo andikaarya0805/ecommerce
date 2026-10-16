@@ -64,6 +64,8 @@ function createInMemoryDb() {
   ];
   const orders: any[] = [];
   const order_items: any[] = [];
+  const chat_rooms: any[] = [];
+  const chat_messages: any[] = [];
 
   return {
     isInMemory: true,
@@ -114,9 +116,36 @@ function createInMemoryDb() {
             }
             return products;
           }
+          if (cleanSql.includes('FROM chat_rooms')) {
+            return [...chat_rooms].sort(
+              (a: any, b: any) =>
+                new Date(b.last_message_at || b.created_at).getTime() -
+                new Date(a.last_message_at || a.created_at).getTime()
+            );
+          }
+          if (cleanSql.includes('FROM chat_messages')) {
+            const rId = params[0];
+            return chat_messages
+              .filter((m: any) => m.room_id === rId)
+              .sort(
+                (a: any, b: any) =>
+                  new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+          }
           return [];
         },
         get(...params: any[]) {
+          if (cleanSql.includes('FROM chat_rooms WHERE id = ?')) {
+            const id = params[0];
+            return chat_rooms.find((r: any) => r.id === id);
+          }
+          if (cleanSql.includes('FROM chat_rooms WHERE user_id = ?')) {
+            const uId = params[0];
+            return chat_rooms.find((r: any) => r.user_id === uId);
+          }
+          if (cleanSql.includes('FROM chat_rooms WHERE unread_admin > 0')) {
+            return { count: chat_rooms.filter((r: any) => (r.unread_admin || 0) > 0).length };
+          }
           if (cleanSql.includes('FROM users WHERE username = ?')) {
             const uName = params[0];
             return users.find((u: any) => u.username === uName);
@@ -372,6 +401,81 @@ function createInMemoryDb() {
             const [st, id] = params;
             const v = vouchers.find((vr: any) => vr.id === id);
             if (v) v.is_active = st;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('INSERT INTO chat_rooms')) {
+            const [id, user_id, user_name, last_message, last_message_at, unread_admin, unread_user, bot_enabled, created_at] = params;
+            chat_rooms.push({
+              id,
+              user_id: user_id || null,
+              user_name,
+              last_message: last_message || '',
+              last_message_at: last_message_at || new Date().toISOString(),
+              unread_admin: unread_admin ?? 0,
+              unread_user: unread_user ?? 0,
+              bot_enabled: bot_enabled ?? 1,
+              created_at: created_at || new Date().toISOString(),
+            });
+            return { changes: 1, lastInsertRowid: chat_rooms.length };
+          }
+          if (cleanSql.includes('INSERT INTO chat_messages')) {
+            const [id, room_id, sender_type, sender_name, message, product_payload, created_at] = params;
+            chat_messages.push({
+              id,
+              room_id,
+              sender_type,
+              sender_name,
+              message,
+              product_payload: product_payload || null,
+              created_at: created_at || new Date().toISOString(),
+            });
+            return { changes: 1, lastInsertRowid: chat_messages.length };
+          }
+          if (cleanSql.includes('UPDATE chat_rooms SET last_message =') && cleanSql.includes('unread_admin = unread_admin + 1')) {
+            const [last_message, last_message_at, id] = params;
+            const r = chat_rooms.find((rm: any) => rm.id === id);
+            if (r) {
+              r.last_message = last_message;
+              r.last_message_at = last_message_at;
+              r.unread_admin = (r.unread_admin || 0) + 1;
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('UPDATE chat_rooms SET last_message =') && cleanSql.includes('unread_user = unread_user + 1')) {
+            const [last_message, last_message_at, id] = params;
+            const r = chat_rooms.find((rm: any) => rm.id === id);
+            if (r) {
+              r.last_message = last_message;
+              r.last_message_at = last_message_at;
+              r.unread_user = (r.unread_user || 0) + 1;
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('UPDATE chat_rooms SET unread_admin = 0 WHERE id = ?')) {
+            const [id] = params;
+            const r = chat_rooms.find((rm: any) => rm.id === id);
+            if (r) r.unread_admin = 0;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('UPDATE chat_rooms SET unread_user = 0 WHERE id = ?')) {
+            const [id] = params;
+            const r = chat_rooms.find((rm: any) => rm.id === id);
+            if (r) r.unread_user = 0;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('UPDATE chat_rooms SET bot_enabled = ? WHERE id = ?')) {
+            const [bot_enabled, id] = params;
+            const r = chat_rooms.find((rm: any) => rm.id === id);
+            if (r) r.bot_enabled = bot_enabled;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('DELETE FROM chat_rooms WHERE id = ?')) {
+            const [id] = params;
+            const idx = chat_rooms.findIndex((rm: any) => rm.id === id);
+            if (idx !== -1) chat_rooms.splice(idx, 1);
+            for (let i = chat_messages.length - 1; i >= 0; i--) {
+              if (chat_messages[i].room_id === id) chat_messages.splice(i, 1);
+            }
             return { changes: 1, lastInsertRowid: 0 };
           }
           return { changes: 0, lastInsertRowid: 0 };
@@ -638,6 +742,30 @@ export function initDb() {
         subtotal INTEGER NOT NULL,
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS chat_rooms (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        user_name TEXT NOT NULL,
+        last_message TEXT,
+        last_message_at TEXT NOT NULL DEFAULT (datetime('now')),
+        unread_admin INTEGER NOT NULL DEFAULT 0,
+        unread_user INTEGER NOT NULL DEFAULT 0,
+        bot_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        room_id TEXT NOT NULL,
+        sender_type TEXT NOT NULL,
+        sender_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        product_payload TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE
+      );
     `);
 
     ensureColumn('products', 'slug', 'TEXT');
@@ -699,6 +827,8 @@ export function initDb() {
         CREATE INDEX IF NOT EXISTS idx_orders_invoice ON orders(invoice_number);
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
+        CREATE INDEX IF NOT EXISTS idx_chat_rooms_last ON chat_rooms(last_message_at);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id);
       `);
     } catch (err) {
       console.warn('[DB] Index creation warning:', err);

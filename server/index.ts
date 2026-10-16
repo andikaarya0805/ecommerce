@@ -25,6 +25,7 @@ import {
   trackBiteshipShipment,
   isBiteshipConfigured,
 } from './biteship.ts';
+import { generateChatbotReply } from './chatbot.ts';
 
 // Load environment variables from .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -1599,6 +1600,231 @@ app.patch('/api/admin/vouchers/:id/toggle', authMiddleware, adminMiddleware, (re
   const newStatus = v.is_active === 1 ? 0 : 1;
   db.prepare('UPDATE vouchers SET is_active = ? WHERE id = ?').run(newStatus, id);
   res.json({ success: true, is_active: newStatus === 1 });
+});
+
+// =====================================================================
+// LIVE CHAT & CHATBOT API (Shopee Style)
+// =====================================================================
+
+app.post('/api/chat/send', optionalAuthMiddleware, async (req: any, res: any) => {
+  try {
+    const { message, guestId, guestName, productContext } = req.body;
+    let { roomId } = req.body;
+
+    if (!message || typeof message !== 'string' || message.trim() === '') {
+      return res.status(400).json({ error: 'Pesan tidak boleh kosong' });
+    }
+
+    const trimmedMsg = message.trim();
+    const isAdmin = req.user?.role === 'admin';
+
+    // Identify user and room
+    if (!roomId) {
+      if (isAdmin) {
+        return res.status(400).json({ error: 'roomId diperlukan untuk pengiriman pesan admin' });
+      } else if (req.user) {
+        roomId = `room_user_${req.user.id}`;
+      } else {
+        const gId = (guestId || 'guest_' + Math.random().toString(36).substring(2, 9)).trim();
+        roomId = `room_guest_${gId}`;
+      }
+    }
+
+    // Check existing room
+    let room = db.prepare('SELECT * FROM chat_rooms WHERE id = ?').get(roomId) as any;
+    const nowIso = new Date().toISOString();
+
+    const senderType = isAdmin ? 'admin' : 'user';
+    const senderName = isAdmin
+      ? 'Admin Jawir Garage'
+      : (req.user ? req.user.username : (guestName || 'Pelanggan'));
+
+    if (!room) {
+      const uId = req.user ? req.user.id : (guestId || null);
+      const uName = senderName;
+      db.prepare(`
+        INSERT INTO chat_rooms (
+          id, user_id, user_name, last_message, last_message_at,
+          unread_admin, unread_user, bot_enabled, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(
+        roomId,
+        uId,
+        uName,
+        trimmedMsg,
+        nowIso,
+        isAdmin ? 0 : 1,
+        isAdmin ? 1 : 0,
+        nowIso
+      );
+      room = { id: roomId, user_id: uId, user_name: uName, bot_enabled: 1 };
+    } else {
+      if (isAdmin) {
+        db.prepare(`
+          UPDATE chat_rooms 
+          SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
+          WHERE id = ?
+        `).run(trimmedMsg, nowIso, roomId);
+      } else {
+        db.prepare(`
+          UPDATE chat_rooms 
+          SET last_message = ?, last_message_at = ?, unread_admin = unread_admin + 1
+          WHERE id = ?
+        `).run(trimmedMsg, nowIso, roomId);
+      }
+    }
+
+    // Insert user or admin message
+    const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    db.prepare(`
+      INSERT INTO chat_messages (
+        id, room_id, sender_type, sender_name, message, product_payload, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      msgId,
+      roomId,
+      senderType,
+      senderName,
+      trimmedMsg,
+      productContext ? JSON.stringify(productContext) : null,
+      nowIso
+    );
+
+    // If message is from user and bot is enabled, generate automated bot response
+    let botReplyMsg: any = null;
+    const isBotActive = room.bot_enabled !== 0;
+
+    if (!isAdmin && isBotActive) {
+      const botResponse = generateChatbotReply(trimmedMsg, {
+        userName: senderName,
+        userId: req.user?.id || null,
+        attachedProduct: productContext || null,
+      });
+
+      if (botResponse && botResponse.reply) {
+        const botMsgId = 'msg_bot_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        const botTime = new Date().toISOString();
+        db.prepare(`
+          INSERT INTO chat_messages (
+            id, room_id, sender_type, sender_name, message, product_payload, created_at
+          ) VALUES (?, ?, 'bot', 'Jawir Bot (Asisten Virtual)', ?, ?, ?)
+        `).run(
+          botMsgId,
+          roomId,
+          botResponse.reply,
+          botResponse.productPayload ? JSON.stringify(botResponse.productPayload) : null,
+          botTime
+        );
+
+        db.prepare(`
+          UPDATE chat_rooms 
+          SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
+          WHERE id = ?
+        `).run(botResponse.reply.substring(0, 100), botTime, roomId);
+
+        botReplyMsg = {
+          id: botMsgId,
+          room_id: roomId,
+          sender_type: 'bot',
+          sender_name: 'Jawir Bot (Asisten Virtual)',
+          message: botResponse.reply,
+          product_payload: botResponse.productPayload || null,
+          created_at: botTime,
+        };
+      }
+    }
+
+    res.json({
+      success: true,
+      roomId,
+      messageId: msgId,
+      botReply: botReplyMsg,
+    });
+  } catch (err: any) {
+    console.error('[Chat API Error]:', err);
+    res.status(500).json({ error: 'Gagal mengirim pesan chat: ' + err.message });
+  }
+});
+
+app.get('/api/chat/messages/:roomId', optionalAuthMiddleware, (req: any, res: any) => {
+  try {
+    const { roomId } = req.params;
+    const room = db.prepare('SELECT * FROM chat_rooms WHERE id = ?').get(roomId) as any;
+    const rawMessages = db.prepare(
+      'SELECT * FROM chat_messages WHERE room_id = ? ORDER BY created_at ASC'
+    ).all(roomId) as any[];
+
+    const messages = rawMessages.map((m) => {
+      let payload = null;
+      if (m.product_payload) {
+        try {
+          payload = typeof m.product_payload === 'string' ? JSON.parse(m.product_payload) : m.product_payload;
+        } catch (e) {}
+      }
+      return {
+        ...m,
+        product_payload: payload,
+      };
+    });
+
+    res.json({
+      room: room || null,
+      messages,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Gagal memuat pesan chat: ' + err.message });
+  }
+});
+
+app.post('/api/chat/rooms/:roomId/read', optionalAuthMiddleware, (req: any, res: any) => {
+  try {
+    const { roomId } = req.params;
+    const { role } = req.body;
+
+    if (role === 'admin' && req.user?.role === 'admin') {
+      db.prepare('UPDATE chat_rooms SET unread_admin = 0 WHERE id = ?').run(roomId);
+    } else {
+      db.prepare('UPDATE chat_rooms SET unread_user = 0 WHERE id = ?').run(roomId);
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/chat/rooms', authMiddleware, adminMiddleware, (req: any, res: any) => {
+  try {
+    const rooms = db.prepare('SELECT * FROM chat_rooms ORDER BY last_message_at DESC').all() as any[];
+    res.json({ rooms });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/chat/rooms/:roomId/toggle-bot', authMiddleware, adminMiddleware, (req: any, res: any) => {
+  try {
+    const { roomId } = req.params;
+    const room = db.prepare('SELECT bot_enabled FROM chat_rooms WHERE id = ?').get(roomId) as any;
+    if (!room) return res.status(404).json({ error: 'Chat room tidak ditemukan' });
+
+    const newBotStatus = room.bot_enabled === 1 ? 0 : 1;
+    db.prepare('UPDATE chat_rooms SET bot_enabled = ? WHERE id = ?').run(newBotStatus, roomId);
+
+    res.json({ success: true, bot_enabled: newBotStatus });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/chat/rooms/:roomId', authMiddleware, adminMiddleware, (req: any, res: any) => {
+  try {
+    const { roomId } = req.params;
+    db.prepare('DELETE FROM chat_rooms WHERE id = ?').run(roomId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =====================================================================

@@ -716,15 +716,23 @@ export const ProductDetailPage: React.FC = () => {
                 Aktif beberapa menit lalu • Kota Jakarta Timur
               </p>
               <div className="flex items-center gap-2 mt-2">
-                <a
-                  href="https://wa.me/6281234567890?text=Halo%20Admin%20Jawir%20Garage,%20saya%20mau%20tanya%20produk"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-[#D0011B]/15 border border-[#D0011B] text-[#D0011B] hover:bg-[#D0011B]/25 text-xs font-bold px-3 py-1 rounded flex items-center gap-1.5 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent('open-jawir-chat', {
+                        detail: {
+                          product,
+                          initialMessage: `Halo Admin, apakah produk ${product.name} ini ready stok?`,
+                        },
+                      })
+                    );
+                  }}
+                  className="bg-[#D0011B]/15 border border-[#D0011B] text-[#D0011B] hover:bg-[#D0011B]/25 text-xs font-bold px-3 py-1 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
                   <span>Chat Sekarang</span>
-                </a>
+                </button>
                 <Link
                   to="/"
                   className="bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold px-3 py-1 rounded border border-neutral-700 transition-colors"

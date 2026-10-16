@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { Product, Order, Voucher } from '../types';
+import { Product, Order, Voucher, ChatRoom, ChatMessage } from '../types';
 import { formatIDR } from '../components/ProductCard';
 import {
   TrendingUp,
@@ -31,7 +31,14 @@ import {
   SlidersHorizontal,
   Info,
   Sparkles,
-  Check
+  Check,
+  MessageCircle,
+  Bot,
+  Send,
+  User,
+  ShieldCheck,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
@@ -72,7 +79,17 @@ export const AdminPanel: React.FC = () => {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'orders' | 'products' | 'vouchers'>('orders');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'orders' | 'products' | 'vouchers' | 'chats'>('orders');
+
+  // Live Chat & Bot State
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
+  const [selectedChatRoomId, setSelectedChatRoomId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [adminChatInput, setAdminChatInput] = useState<string>('');
+  const [adminSending, setAdminSending] = useState<boolean>(false);
+  const [chatSearch, setChatSearch] = useState<string>('');
+  const [chatFilter, setChatFilter] = useState<'ALL' | 'UNREAD' | 'BOT_ON'>('ALL');
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // Analytics State
   const [analytics, setAnalytics] = useState<any>({
@@ -180,6 +197,142 @@ export const AdminPanel: React.FC = () => {
       console.warn('Admin fetch notice:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch Chat Rooms
+  const fetchChatRooms = async () => {
+    if (!token) return;
+    try {
+      const res = await safeFetchJson<{ rooms: ChatRoom[] }>('/api/admin/chat/rooms', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res && res.rooms) {
+        setChatRooms(res.rooms);
+      }
+    } catch (e) {
+      // quiet
+    }
+  };
+
+  // Fetch Messages for a room
+  const fetchRoomMessages = async (roomId: string) => {
+    if (!token) return;
+    try {
+      const res = await safeFetchJson<{ room: ChatRoom; messages: ChatMessage[] }>(
+        `/api/chat/messages/${roomId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res && res.messages) {
+        setChatMessages(res.messages);
+      }
+      // mark as read by admin
+      safeFetchJson(`/api/chat/rooms/${roomId}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ role: 'admin' }),
+      }).then(() => {
+        setChatRooms((prev) =>
+          prev.map((r) => (r.id === roomId ? { ...r, unread_admin: 0 } : r))
+        );
+      });
+    } catch (e) {}
+  };
+
+  // Live polling for chat rooms and active messages
+  useEffect(() => {
+    fetchChatRooms();
+    const interval = setInterval(() => {
+      fetchChatRooms();
+      if (selectedChatRoomId && activeTab === 'chats') {
+        fetchRoomMessages(selectedChatRoomId);
+      }
+    }, activeTab === 'chats' ? 3000 : 10000);
+    return () => clearInterval(interval);
+  }, [activeTab, selectedChatRoomId, token]);
+
+  useEffect(() => {
+    if (selectedChatRoomId) {
+      fetchRoomMessages(selectedChatRoomId);
+    }
+  }, [selectedChatRoomId]);
+
+  useEffect(() => {
+    if (activeTab === 'chats') {
+      chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages.length, activeTab]);
+
+  const handleSendAdminReply = async (quickText?: string) => {
+    const text = (quickText || adminChatInput).trim();
+    if (!text || !selectedChatRoomId || adminSending) return;
+
+    setAdminSending(true);
+    setAdminChatInput('');
+
+    const tempMsg: ChatMessage = {
+      id: 'admin_temp_' + Date.now(),
+      room_id: selectedChatRoomId,
+      sender_type: 'admin',
+      sender_name: 'Admin Jawir Garage',
+      message: text,
+      created_at: new Date().toISOString(),
+    };
+    setChatMessages((prev) => [...prev, tempMsg]);
+
+    try {
+      await safeFetchJson('/api/chat/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          roomId: selectedChatRoomId,
+          message: text,
+        }),
+      });
+      fetchRoomMessages(selectedChatRoomId);
+      fetchChatRooms();
+    } catch (err: any) {
+      alert('Gagal mengirim pesan: ' + err.message);
+    } finally {
+      setAdminSending(false);
+    }
+  };
+
+  const handleToggleBot = async (roomId: string) => {
+    try {
+      const res = await safeFetchJson<{ success: boolean; bot_enabled: number }>(
+        `/api/admin/chat/rooms/${roomId}/toggle-bot`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res && res.success) {
+        setChatRooms((prev) =>
+          prev.map((r) => (r.id === roomId ? { ...r, bot_enabled: res.bot_enabled } : r))
+        );
+      }
+    } catch (e: any) {
+      alert('Gagal mengubah mode bot: ' + e.message);
+    }
+  };
+
+  const handleDeleteChatRoom = async (roomId: string) => {
+    if (!window.confirm('Hapus percakapan pelanggan ini dari riwayat?')) return;
+    try {
+      await safeFetchJson(`/api/admin/chat/rooms/${roomId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (selectedChatRoomId === roomId) {
+        setSelectedChatRoomId(null);
+        setChatMessages([]);
+      }
+      fetchChatRooms();
+    } catch (e: any) {
+      alert('Gagal menghapus percakapan: ' + e.message);
     }
   };
 
@@ -557,12 +710,29 @@ export const AdminPanel: React.FC = () => {
               >
                 Voucer Promo
               </button>
+              <button
+                onClick={() => setActiveTab('chats')}
+                className={`relative px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === 'chats' ? 'bg-[#E50914] text-white' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Live Chat & Bot</span>
+                {chatRooms.reduce((acc, r) => acc + (r.unread_admin || 0), 0) > 0 && (
+                  <span className="bg-amber-400 text-neutral-950 font-black text-[10px] px-1.5 py-0.2 rounded-full animate-pulse">
+                    {chatRooms.reduce((acc, r) => acc + (r.unread_admin || 0), 0)}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => fetchAllAdminData()}
+              onClick={() => {
+                fetchAllAdminData();
+                fetchChatRooms();
+              }}
               className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white"
               title="Refresh Data"
             >
@@ -591,6 +761,13 @@ export const AdminPanel: React.FC = () => {
             { id: 'analytics', label: 'Analitik' },
             { id: 'products', label: 'Produk' },
             { id: 'vouchers', label: 'Voucer' },
+            {
+              id: 'chats',
+              label:
+                chatRooms.reduce((acc, r) => acc + (r.unread_admin || 0), 0) > 0
+                  ? `Chat (${chatRooms.reduce((acc, r) => acc + (r.unread_admin || 0), 0)})`
+                  : 'Chat Pelanggan',
+            },
           ].map((t) => (
             <button
               key={t.id}
@@ -1127,6 +1304,386 @@ export const AdminPanel: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 5: LIVE CHAT & CHATBOT MANAGER (Shopee Style CS)           */}
+        {/* ============================================================== */}
+        {activeTab === 'chats' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
+            {/* Header info */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-900 border border-neutral-800 p-4 rounded-2xl">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-racing font-bold text-xl text-white tracking-wide flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-[#E50914]" />
+                    Live Chat Pelanggan & Chatbot Otomatis
+                  </h3>
+                  <span className="bg-emerald-950 text-emerald-400 border border-emerald-800/60 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Auto-Responder Aktif
+                  </span>
+                </div>
+                <p className="text-neutral-400 text-xs mt-1">
+                  Chatbot menjawab ketersediaan stok & harga produk secara otomatis 24/7. Admin dapat memantau per user dan membalas langsung secara real-time.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    fetchChatRooms();
+                    if (selectedChatRoomId) fetchRoomMessages(selectedChatRoomId);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Chat</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Chat Workspace (Two-column layout) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[650px] max-h-[75vh]">
+              {/* Left Column: Rooms List (col-span-4) */}
+              <div className="lg:col-span-4 bg-neutral-900 border border-neutral-800 rounded-2xl flex flex-col overflow-hidden">
+                {/* Search & Filter Header */}
+                <div className="p-3 border-b border-neutral-800 space-y-2">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-neutral-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari user atau percakapan..."
+                      value={chatSearch}
+                      onChange={(e) => setChatSearch(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914]"
+                    />
+                  </div>
+
+                  {/* Filter Badges */}
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <button
+                      onClick={() => setChatFilter('ALL')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                        chatFilter === 'ALL'
+                          ? 'bg-[#E50914] text-white'
+                          : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      Semua ({chatRooms.length})
+                    </button>
+                    <button
+                      onClick={() => setChatFilter('UNREAD')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                        chatFilter === 'UNREAD'
+                          ? 'bg-[#E50914] text-white'
+                          : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      Belum Dibalas ({chatRooms.filter((r) => (r.unread_admin || 0) > 0).length})
+                    </button>
+                    <button
+                      onClick={() => setChatFilter('BOT_ON')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                        chatFilter === 'BOT_ON'
+                          ? 'bg-[#E50914] text-white'
+                          : 'bg-neutral-950 text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      Bot Aktif
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rooms Scroll List */}
+                <div className="flex-1 overflow-y-auto divide-y divide-neutral-800/60 no-scrollbar">
+                  {chatRooms.length === 0 ? (
+                    <div className="p-8 text-center text-neutral-500 text-xs">
+                      <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      Belum ada percakapan pelanggan masuk.
+                    </div>
+                  ) : (
+                    chatRooms
+                      .filter((r) => {
+                        const matchesSearch =
+                          !chatSearch.trim() ||
+                          r.user_name.toLowerCase().includes(chatSearch.toLowerCase()) ||
+                          (r.last_message && r.last_message.toLowerCase().includes(chatSearch.toLowerCase()));
+                        if (!matchesSearch) return false;
+                        if (chatFilter === 'UNREAD') return (r.unread_admin || 0) > 0;
+                        if (chatFilter === 'BOT_ON') return r.bot_enabled === 1 || r.bot_enabled === true;
+                        return true;
+                      })
+                      .map((room) => {
+                        const isSelected = selectedChatRoomId === room.id;
+                        const hasUnread = (room.unread_admin || 0) > 0;
+
+                        return (
+                          <div
+                            key={room.id}
+                            onClick={() => setSelectedChatRoomId(room.id)}
+                            className={`p-3.5 transition-all cursor-pointer flex items-start gap-3 ${
+                              isSelected
+                                ? 'bg-neutral-800/90 border-l-4 border-l-[#E50914]'
+                                : 'hover:bg-neutral-850'
+                            }`}
+                          >
+                            <div className="relative w-10 h-10 rounded-full bg-neutral-950 border border-neutral-700 flex items-center justify-center shrink-0 text-white font-bold text-xs uppercase">
+                              {room.user_name.substring(0, 2)}
+                              <span
+                                className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-neutral-900 ${
+                                  hasUnread ? 'bg-amber-400' : 'bg-emerald-500'
+                                }`}
+                              />
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <h5 className="font-bold text-xs text-white truncate flex items-center gap-1.5">
+                                  <span>{room.user_name}</span>
+                                  {room.user_id ? (
+                                    <span className="text-[9px] bg-neutral-800 text-neutral-400 px-1 py-0.2 rounded">
+                                      Member
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] bg-neutral-950 text-neutral-500 px-1 py-0.2 rounded border border-neutral-800">
+                                      Tamu
+                                    </span>
+                                  )}
+                                </h5>
+                                <span className="text-[10px] text-neutral-500 shrink-0">
+                                  {new Date(room.last_message_at || room.created_at).toLocaleTimeString('id-ID', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+                                {room.last_message || 'Percakapan baru dimulai'}
+                              </p>
+
+                              <div className="flex items-center justify-between mt-2 pt-1 border-t border-neutral-800/40 text-[10px]">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded font-semibold ${
+                                    room.bot_enabled
+                                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
+                                      : 'bg-neutral-800 text-neutral-400'
+                                  }`}
+                                >
+                                  {room.bot_enabled ? '🤖 Bot ON' : '👨‍🔧 CS Manual'}
+                                </span>
+
+                                {hasUnread && (
+                                  <span className="bg-[#E50914] text-white font-black text-[10px] px-2 py-0.5 rounded-full animate-bounce">
+                                    {room.unread_admin} Baru
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Chat Box & Messages (col-span-8) */}
+              <div className="lg:col-span-8 bg-neutral-900 border border-neutral-800 rounded-2xl flex flex-col overflow-hidden">
+                {!selectedChatRoomId ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-neutral-500">
+                    <div className="w-16 h-16 rounded-full bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-600 mb-3">
+                      <MessageCircle className="w-8 h-8" />
+                    </div>
+                    <h4 className="font-bold text-white text-sm">Pilih Percakapan Pelanggan</h4>
+                    <p className="text-xs text-neutral-400 max-w-sm mt-1">
+                      Klik salah satu chat di sebelah kiri untuk melihat percakapan, mengecek riwayat chatbot, atau membalas pertanyaan pembeli secara manual.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Active Room Header */}
+                    {(() => {
+                      const currentRoom = chatRooms.find((r) => r.id === selectedChatRoomId);
+                      return (
+                        <div className="p-3.5 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-white font-bold text-xs uppercase">
+                              {currentRoom?.user_name.substring(0, 2) || 'PL'}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-xs text-white">
+                                  {currentRoom?.user_name || 'Pelanggan'}
+                                </h4>
+                                <span className="text-[10px] text-neutral-500 font-mono">
+                                  ({currentRoom?.id})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-neutral-400">
+                                <span>Terakhir aktif: {new Date(currentRoom?.last_message_at || Date.now()).toLocaleTimeString('id-ID')}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Toggle Bot Button */}
+                            <button
+                              onClick={() => currentRoom && handleToggleBot(currentRoom.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                currentRoom?.bot_enabled
+                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/80 hover:bg-emerald-900/60'
+                                  : 'bg-neutral-800 text-neutral-300 border border-neutral-700 hover:bg-neutral-700'
+                              }`}
+                              title={currentRoom?.bot_enabled ? 'Klik untuk mematikan bot (Mode manual admin)' : 'Klik untuk mengaktifkan bot auto-reply'}
+                            >
+                              <Bot className="w-3.5 h-3.5" />
+                              <span>{currentRoom?.bot_enabled ? 'Mode Bot: ON' : 'Mode Bot: OFF (Manual)'}</span>
+                            </button>
+
+                            {/* Delete Room */}
+                            <button
+                              onClick={() => currentRoom && handleDeleteChatRoom(currentRoom.id)}
+                              className="p-1.5 rounded-xl bg-neutral-800 hover:bg-red-950 text-neutral-400 hover:text-red-400 transition-colors"
+                              title="Hapus riwayat chat"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Messages Body */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-neutral-950/60 text-xs">
+                      {chatMessages.length === 0 ? (
+                        <div className="text-center py-10 text-neutral-500 text-xs">
+                          Belum ada pesan di percakapan ini.
+                        </div>
+                      ) : (
+                        chatMessages.map((m) => {
+                          const isUser = m.sender_type === 'user';
+                          const isBot = m.sender_type === 'bot';
+                          const isAdmin = m.sender_type === 'admin';
+
+                          return (
+                            <div
+                              key={m.id}
+                              className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'} space-y-1`}
+                            >
+                              <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 px-1">
+                                {isAdmin && (
+                                  <span className="bg-red-950 text-red-400 border border-red-800/50 px-1.5 py-0.2 rounded font-bold">
+                                    👨‍🔧 Anda (Admin Jawir)
+                                  </span>
+                                )}
+                                {isBot && (
+                                  <span className="bg-emerald-950 text-emerald-400 border border-emerald-800/50 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
+                                    <Bot className="w-2.5 h-2.5" /> Jawir Bot (Auto)
+                                  </span>
+                                )}
+                                {isUser && (
+                                  <span className="bg-neutral-800 text-neutral-300 px-1.5 py-0.2 rounded font-bold flex items-center gap-1">
+                                    <User className="w-2.5 h-2.5" /> {m.sender_name}
+                                  </span>
+                                )}
+                                <span className="text-neutral-500 text-[9px]">
+                                  {new Date(m.created_at).toLocaleTimeString('id-ID', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+
+                              <div
+                                className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs shadow-md leading-relaxed whitespace-pre-wrap ${
+                                  isAdmin
+                                    ? 'bg-[#E50914] text-white rounded-tr-none'
+                                    : isBot
+                                    ? 'bg-neutral-900 border border-emerald-900/50 text-neutral-200 rounded-tl-none'
+                                    : 'bg-neutral-800 border border-neutral-700 text-neutral-100 rounded-tl-none'
+                                }`}
+                              >
+                                {m.message}
+
+                                {/* Product Payload attached */}
+                                {m.product_payload && (
+                                  <div className="mt-2 bg-neutral-950/90 border border-neutral-700 rounded-xl p-2 flex items-center gap-2 text-left">
+                                    <img
+                                      src={m.product_payload.image}
+                                      alt={m.product_payload.name}
+                                      className="w-10 h-10 rounded-lg object-cover bg-neutral-900 shrink-0 border border-neutral-800"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <h6 className="font-semibold text-white text-[10px] truncate">
+                                        {m.product_payload.name}
+                                      </h6>
+                                      <span className="text-[#E50914] font-bold text-[11px] block">
+                                        {formatIDR(m.product_payload.price)}
+                                      </span>
+                                      <span className="text-emerald-400 text-[9px]">
+                                        Stok: {m.product_payload.stock} pcs
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      <div ref={chatMessagesEndRef} />
+                    </div>
+
+                    {/* Quick Response Shortcuts for Admin */}
+                    <div className="bg-neutral-950 px-3 py-1.5 border-t border-neutral-850 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                      <span className="text-[10px] text-neutral-500 shrink-0 font-bold">Template:</span>
+                      {[
+                        'Halo kak, barang ready dan siap dikirim hari ini ya!',
+                        'Bisa infokan tipe motor dan tahunnya kak?',
+                        'Pesanan sudah dipacking rapi dan menunggu pickup kurir.',
+                        'Garansi 100% original part Jawir Garage kak.',
+                      ].map((tmpl, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSendAdminReply(tmpl)}
+                          className="shrink-0 text-[10px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                        >
+                          "{tmpl.substring(0, 24)}..."
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Admin Message Input Bar */}
+                    <div className="p-3 bg-neutral-900 border-t border-neutral-800 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ketik balasan untuk pelanggan... (Tekan Enter untuk kirim)"
+                        value={adminChatInput}
+                        onChange={(e) => setAdminChatInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendAdminReply();
+                          }
+                        }}
+                        disabled={adminSending}
+                        className="flex-1 bg-neutral-950 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914]"
+                      />
+                      <button
+                        onClick={() => handleSendAdminReply()}
+                        disabled={!adminChatInput.trim() || adminSending}
+                        className="px-4 py-2 rounded-xl bg-[#E50914] hover:bg-[#ff1a25] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer shadow-md"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Kirim</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

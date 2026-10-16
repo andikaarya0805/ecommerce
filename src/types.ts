@@ -124,3 +124,38 @@ export interface Order {
   created_at: string;
   items: OrderItem[];
 }
+
+export interface ChatProductPayload {
+  id: string;
+  name: string;
+  slug?: string;
+  price: number;
+  originalPrice?: number;
+  discountPercent?: number;
+  image: string;
+  stock: number;
+  rating?: number;
+  soldCount?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  room_id: string;
+  sender_type: 'user' | 'admin' | 'bot';
+  sender_name: string;
+  message: string;
+  product_payload?: ChatProductPayload | null;
+  created_at: string;
+}
+
+export interface ChatRoom {
+  id: string;
+  user_id?: string | null;
+  user_name: string;
+  last_message?: string;
+  last_message_at: string;
+  unread_admin: number;
+  unread_user: number;
+  bot_enabled: boolean | number;
+  created_at: string;
+}

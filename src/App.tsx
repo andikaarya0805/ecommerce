@@ -17,8 +17,9 @@ import { CartDrawer } from './components/CartDrawer';
 import { GarageModal } from './components/GarageModal';
 import { FooterTrustBadges } from './components/FooterTrustBadges';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
+import { LiveChatWidget } from './components/LiveChatWidget';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { AdminPanel } from './pages/AdminPanel';
 import { InvoicePage } from './pages/InvoicePage';
@@ -314,9 +315,6 @@ function StoreFront() {
       {/* Trust Badges & Footer */}
       <FooterTrustBadges />
 
-      {/* WhatsApp Floating Consultation Trigger */}
-      <WhatsAppFloatingButton />
-
       {/* Modals & Drawers */}
       <ShopeeVariationModal
         product={variationProduct}
@@ -367,21 +365,29 @@ function StoreFront() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const isAdmin = location.pathname.startsWith('/admin');
+
   return (
-    <Routes>
-      <Route path="/" element={<StoreFront />} />
-      <Route path="/product/:id" element={<ProductDetailPage />} />
-      <Route path="/produk/:id" element={<ProductDetailPage />} />
-      <Route path="/cart" element={<CartPage />} />
-      <Route path="/checkout" element={<CheckoutPage />} />
-      <Route path="/orders" element={<OrderHistoryPage />} />
-      <Route path="/my-orders" element={<OrderHistoryPage />} />
-      <Route path="/orders/:invoiceNumber" element={<InvoicePage />} />
-      <Route path="/track-order" element={<TrackOrderPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<LoginPage />} />
-      <Route path="/admin" element={<AdminPanel />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<StoreFront />} />
+        <Route path="/product/:id" element={<ProductDetailPage />} />
+        <Route path="/produk/:id" element={<ProductDetailPage />} />
+        <Route path="/cart" element={<CartPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/orders" element={<OrderHistoryPage />} />
+        <Route path="/my-orders" element={<OrderHistoryPage />} />
+        <Route path="/orders/:invoiceNumber" element={<InvoicePage />} />
+        <Route path="/track-order" element={<TrackOrderPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<LoginPage />} />
+        <Route path="/admin" element={<AdminPanel />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* Shopee-style Live Chat & Chatbot Widget */}
+      {!isAdmin && <LiveChatWidget />}
+    </>
   );
 }

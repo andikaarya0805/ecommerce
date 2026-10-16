@@ -42,12 +42,14 @@ export const ShopeeStoreHeader: React.FC<ShopeeStoreHeaderProps> = ({
     }
   };
 
-  const handleOpenWhatsApp = () => {
-    const phone = '6281234567890';
-    const msg = encodeURIComponent(
-      'Halo Admin Jawir Garage Official Store, saya ingin konsultasi kecocokan part untuk motor saya...'
+  const handleOpenLiveChat = () => {
+    window.dispatchEvent(
+      new CustomEvent('open-jawir-chat', {
+        detail: {
+          initialMessage: 'Halo Admin Jawir Garage, saya mau konsultasi part motor!',
+        },
+      })
     );
-    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
   };
 
   return (
@@ -120,7 +122,7 @@ export const ShopeeStoreHeader: React.FC<ShopeeStoreHeaderProps> = ({
                 </button>
 
                 <button
-                  onClick={handleOpenWhatsApp}
+                  onClick={handleOpenLiveChat}
                   className="flex items-center gap-1 px-3 py-1.5 rounded bg-neutral-900 border border-neutral-700 hover:border-neutral-500 text-neutral-200 text-xs font-bold transition-all cursor-pointer"
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-[#E50914]" />

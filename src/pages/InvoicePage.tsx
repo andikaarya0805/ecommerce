@@ -632,15 +632,21 @@ export const InvoicePage: React.FC = () => {
               </span>
             </div>
 
-            <a
-              href="https://wa.me/6281234567890"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-[#EE4D2D] font-bold hover:underline flex items-center gap-1"
+            <button
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('open-jawir-chat', {
+                    detail: {
+                      initialMessage: `Halo Admin Jawir Garage, saya mau tanya rincian pesanan invoice ${order.invoice_number}`,
+                    },
+                  })
+                );
+              }}
+              className="text-xs text-[#EE4D2D] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>Chat Penjual</span>
-            </a>
+            </button>
           </div>
 
           {/* Product Items */}
