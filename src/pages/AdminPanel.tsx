@@ -241,7 +241,7 @@ export const AdminPanel: React.FC = () => {
     } catch (e) {}
   };
 
-  // Live polling for chat rooms and active messages
+  // Live polling for chat rooms and active messages (1-second real-time sync)
   useEffect(() => {
     fetchChatRooms();
     const interval = setInterval(() => {
@@ -249,9 +249,41 @@ export const AdminPanel: React.FC = () => {
       if (selectedChatRoomId && activeTab === 'chats') {
         fetchRoomMessages(selectedChatRoomId);
       }
-    }, activeTab === 'chats' ? 3000 : 10000);
+    }, 1000);
     return () => clearInterval(interval);
   }, [activeTab, selectedChatRoomId, token]);
+
+  // Live background polling for orders, products & analytics in admin panel (1-second sync)
+  useEffect(() => {
+    if (!token || token.startsWith('demo-')) return;
+    const interval = setInterval(async () => {
+      try {
+        if (activeTab === 'orders' || activeTab === 'analytics') {
+          const [resAnalytics, resOrders] = await Promise.allSettled([
+            safeFetchJson('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` } }),
+            safeFetchJson('/api/admin/orders', { headers: { Authorization: `Bearer ${token}` } }),
+          ]);
+          if (resAnalytics.status === 'fulfilled' && resAnalytics.value) {
+            setAnalytics(resAnalytics.value);
+          }
+          if (resOrders.status === 'fulfilled' && Array.isArray(resOrders.value)) {
+            setOrders(resOrders.value);
+          }
+        } else if (activeTab === 'products') {
+          // If product editing modal is not open, sync products list from db
+          if (!isProductModalOpen) {
+            const resProd = await safeFetchJson<Product[]>('/api/admin/products', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (Array.isArray(resProd) && resProd.length > 0) {
+              setProducts(resProd);
+            }
+          }
+        }
+      } catch (e) {}
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeTab, token, isProductModalOpen]);
 
   useEffect(() => {
     if (selectedChatRoomId) {
@@ -1638,8 +1670,8 @@ export const AdminPanel: React.FC = () => {
                     </div>
 
                     {/* Quick Response Shortcuts for Admin */}
-                    <div className="bg-neutral-950 px-3 py-1.5 border-t border-neutral-850 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                      <span className="text-[10px] text-neutral-500 shrink-0 font-bold">Template:</span>
+                    <div className="bg-neutral-950 px-3.5 py-2 border-t border-neutral-850 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                      <span className="text-[11px] text-neutral-400 shrink-0 font-bold">Template Cepat:</span>
                       {[
                         'Halo kak, barang ready dan siap dikirim hari ini ya!',
                         'Bisa infokan tipe motor dan tahunnya kak?',
@@ -1649,15 +1681,15 @@ export const AdminPanel: React.FC = () => {
                         <button
                           key={idx}
                           onClick={() => handleSendAdminReply(tmpl)}
-                          className="shrink-0 text-[10px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                          className="shrink-0 text-xs bg-neutral-900 hover:bg-neutral-800 text-neutral-200 hover:text-white border border-neutral-800 hover:border-neutral-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer font-medium"
                         >
-                          "{tmpl.substring(0, 24)}..."
+                          "{tmpl.substring(0, 26)}..."
                         </button>
                       ))}
                     </div>
 
                     {/* Admin Message Input Bar */}
-                    <div className="p-3 bg-neutral-900 border-t border-neutral-800 flex items-center gap-2">
+                    <div className="p-3.5 bg-neutral-900 border-t border-neutral-800 flex items-center gap-3">
                       <input
                         type="text"
                         placeholder="Ketik balasan untuk pelanggan... (Tekan Enter untuk kirim)"
@@ -1670,15 +1702,15 @@ export const AdminPanel: React.FC = () => {
                           }
                         }}
                         disabled={adminSending}
-                        className="flex-1 bg-neutral-950 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914]"
+                        className="flex-1 bg-neutral-950 border border-neutral-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914] transition-colors"
                       />
                       <button
                         onClick={() => handleSendAdminReply()}
                         disabled={!adminChatInput.trim() || adminSending}
-                        className="px-4 py-2 rounded-xl bg-[#E50914] hover:bg-[#ff1a25] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer shadow-md"
+                        className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#E50914] hover:bg-[#ff1a25] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-transform active:scale-95 cursor-pointer shadow-md shrink-0"
                       >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Kirim</span>
+                        <Send className="w-4 h-4" />
+                        <span>Kirim Balasan</span>
                       </button>
                     </div>
                   </>

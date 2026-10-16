@@ -272,12 +272,12 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
               <span className="text-[10px] text-neutral-500">Maks. {availableStock} pcs</span>
             </div>
 
-            <div className="flex items-center border border-neutral-700 rounded bg-[#181818] overflow-hidden">
+            <div className="flex items-center border border-neutral-700 rounded-lg bg-[#181818] overflow-hidden">
               <button
                 type="button"
                 disabled={quantity <= 1}
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="w-8 h-8 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-bold transition-colors"
+                className="w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer font-bold text-base transition-colors"
               >
                 -
               </button>
@@ -290,13 +290,13 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
                   const val = parseInt(e.target.value) || 1;
                   setQuantity(Math.min(availableStock, Math.max(1, val)));
                 }}
-                className="w-12 h-8 text-center text-xs font-bold text-white bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-x border-neutral-700"
+                className="w-14 h-10 text-center text-sm font-bold text-white bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-x border-neutral-700"
               />
               <button
                 type="button"
                 disabled={quantity >= availableStock}
                 onClick={() => setQuantity((q) => Math.min(availableStock, q + 1))}
-                className="w-8 h-8 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-bold transition-colors"
+                className="w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer font-bold text-base transition-colors"
               >
                 +
               </button>
@@ -305,13 +305,13 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
         </div>
 
         {/* Bottom Sticky Action Buttons (Shopee Style: Dual Buttons) */}
-        <div className="p-3 bg-[#181818] border-t border-neutral-800 flex items-center gap-2">
+        <div className="p-3.5 bg-[#181818] border-t border-neutral-800 flex items-center gap-3">
           {/* Button 1: Masukkan Keranjang */}
           <button
             type="button"
             id="shopee-modal-add-cart-btn"
             onClick={() => validateAndProceed('cart')}
-            className="flex-1 bg-[#D0011B]/15 hover:bg-[#D0011B]/25 active:scale-95 text-[#D0011B] border border-[#D0011B] font-bold text-xs sm:text-sm py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            className="flex-1 min-h-[46px] bg-[#D0011B]/15 hover:bg-[#D0011B]/25 active:scale-95 text-[#D0011B] border border-[#D0011B] font-bold text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
           >
             <ShoppingBag className="w-4 h-4" />
             <span>Masukkan Keranjang</span>
@@ -322,7 +322,7 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
             type="button"
             id="shopee-modal-buy-now-btn"
             onClick={() => validateAndProceed('buy')}
-            className="flex-1 bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white font-bold text-xs sm:text-sm py-2.5 px-3 rounded-lg shadow-lg shadow-red-950/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            className="flex-1 min-h-[46px] bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white font-extrabold text-sm py-3 px-4 rounded-xl shadow-lg shadow-red-950/50 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <Zap className="w-4 h-4 fill-current" />
             <span>Beli Sekarang</span>

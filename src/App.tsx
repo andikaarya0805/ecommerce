@@ -87,8 +87,18 @@ function StoreFront() {
     }
   };
 
+  // Auto-sync products catalog every 1 second in storefront
   useEffect(() => {
     fetchAllData();
+    const interval = setInterval(async () => {
+      try {
+        const resProd = await safeFetchJson<Product[]>('/api/products');
+        if (Array.isArray(resProd) && resProd.length > 0) {
+          setProducts(resProd);
+        }
+      } catch (e) {}
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
 

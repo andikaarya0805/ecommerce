@@ -159,9 +159,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <button
             id={`add-cart-btn-${product.id}`}
             onClick={(e) => onAddToCart(product, e)}
-            className="w-full mt-2.5 bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white font-bold text-xs py-2 px-2.5 rounded flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+            className="w-full mt-2.5 bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white font-bold text-xs sm:text-sm py-2.5 px-3 min-h-[38px] rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
           >
-            <ShoppingBag className="w-3.5 h-3.5" />
+            <ShoppingBag className="w-4 h-4" />
             <span>+ Keranjang</span>
           </button>
         </div>

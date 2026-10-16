@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { ChatMessage, ChatProductPayload } from '../types';
 import { safeFetchJson } from '../config/api';
 import { formatIDR } from './ProductCard';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   MessageCircle,
   X,
@@ -23,6 +23,8 @@ import {
 export const LiveChatWidget: React.FC = () => {
   const { user, token } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isOnCartPage = location.pathname === '/cart';
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -87,10 +89,10 @@ export const LiveChatWidget: React.FC = () => {
     } catch (err) {}
   };
 
-  // Polling: 3s when open, 10s when closed
+  // Polling: 1s when open, 2s when closed (Real-time sync)
   useEffect(() => {
     fetchMessages();
-    const intervalTime = isOpen ? 3000 : 10000;
+    const intervalTime = isOpen ? 1000 : 2000;
     const interval = setInterval(fetchMessages, intervalTime);
     return () => clearInterval(interval);
   }, [roomId, isOpen]);
@@ -209,10 +211,14 @@ export const LiveChatWidget: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end pointer-events-auto select-none font-sans">
+    <div
+      className={`fixed z-40 flex flex-col items-end pointer-events-auto select-none font-sans transition-all duration-300 ${
+        isOnCartPage ? 'bottom-24 sm:bottom-20 right-4' : 'bottom-4 right-4'
+      }`}
+    >
       {/* Mini Tooltip Prompt when closed */}
       {!isOpen && showTooltip && (
-        <div className="relative mb-2 px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-700 shadow-2xl text-neutral-200 text-xs flex items-center gap-2 max-w-[240px] animate-in fade-in slide-in-from-bottom-2">
+        <div className="relative mb-2 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-700 shadow-2xl text-neutral-200 text-xs flex items-center gap-2.5 max-w-[260px] animate-in fade-in slide-in-from-bottom-2">
           <Sparkles className="w-4 h-4 text-[#E50914] shrink-0 animate-pulse" />
           <div className="leading-tight">
             <span className="font-bold text-white block">Tanya Admin & Jawir Bot</span>
@@ -220,7 +226,7 @@ export const LiveChatWidget: React.FC = () => {
           </div>
           <button
             onClick={() => setShowTooltip(false)}
-            className="text-neutral-400 hover:text-white ml-1 p-0.5"
+            className="text-neutral-400 hover:text-white ml-1 p-1"
             aria-label="Tutup tooltip"
           >
             <X className="w-3.5 h-3.5" />
@@ -232,18 +238,17 @@ export const LiveChatWidget: React.FC = () => {
       {/* Floating Action Trigger Button */}
       {!isOpen && (
         <div className="flex items-center gap-2">
-
           {/* Main Shopee Live Chat Button */}
           <button
             id="floating-live-chat-btn"
             onClick={() => setIsOpen(true)}
-            className="group relative flex items-center gap-2 bg-gradient-to-r from-[#D0011B] to-[#E50914] hover:from-[#E50914] hover:to-[#ff1a25] active:scale-95 text-white px-4 py-2.5 rounded-full shadow-2xl shadow-red-950/80 border border-red-400/40 transition-all cursor-pointer"
+            className="group relative flex items-center gap-2.5 bg-gradient-to-r from-[#D0011B] to-[#E50914] hover:from-[#E50914] hover:to-[#ff1a25] active:scale-95 text-white px-5 py-3 rounded-full shadow-2xl shadow-red-950/80 border border-red-400/50 transition-all cursor-pointer min-h-[50px]"
             aria-label="Buka Chat Toko & Mekanik"
           >
             <div className="relative">
               <MessageCircle className="w-5 h-5 fill-current" />
               {unreadCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-amber-400 text-neutral-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-md animate-bounce">
+                <span className="absolute -top-2.5 -right-2.5 bg-amber-400 text-neutral-950 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-bounce">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -261,9 +266,9 @@ export const LiveChatWidget: React.FC = () => {
 
       {/* Shopee-style Chat Window Box */}
       {isOpen && (
-        <div className="w-[92vw] sm:w-[390px] h-[540px] max-h-[82vh] bg-neutral-950 border border-neutral-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="w-[94vw] sm:w-[410px] h-[580px] max-h-[85vh] bg-neutral-950 border border-neutral-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
           {/* Header */}
-          <div className="bg-gradient-to-r from-neutral-900 via-neutral-900 to-neutral-850 border-b border-neutral-800 px-3.5 py-3 flex items-center justify-between text-white shrink-0">
+          <div className="bg-gradient-to-r from-neutral-900 via-neutral-900 to-neutral-850 border-b border-neutral-800 px-4 py-3 flex items-center justify-between text-white shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative w-9 h-9 rounded-full bg-neutral-800 border border-red-500/40 p-1 flex items-center justify-center shrink-0">
                 <span className="text-[#E50914] font-black text-sm tracking-tighter">JG</span>
@@ -285,7 +290,7 @@ export const LiveChatWidget: React.FC = () => {
               {/* Minimize */}
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+                className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                 title="Tutup Chat"
               >
                 <ChevronDown className="w-4 h-4" />
@@ -472,7 +477,7 @@ export const LiveChatWidget: React.FC = () => {
           )}
 
           {/* Footer Input Bar */}
-          <div className="bg-neutral-900 border-t border-neutral-800 p-2.5 flex items-center gap-2 shrink-0">
+          <div className="bg-neutral-900 border-t border-neutral-800 p-3 flex items-center gap-2.5 shrink-0">
             <input
               type="text"
               value={inputMessage}
@@ -480,15 +485,15 @@ export const LiveChatWidget: React.FC = () => {
               onKeyDown={handleKeyDown}
               placeholder="Ketik pesan atau tanya part..."
               disabled={isSending}
-              className="flex-1 bg-neutral-950 border border-neutral-700 rounded-full px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914] transition-colors"
+              className="flex-1 bg-neutral-950 border border-neutral-700 rounded-full px-4 py-2.5 text-xs sm:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-[#E50914] transition-colors"
             />
             <button
               onClick={() => handleSendMessage()}
               disabled={!inputMessage.trim() || isSending}
-              className="w-8 h-8 rounded-full bg-[#E50914] hover:bg-[#ff1a25] disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 cursor-pointer shadow-md"
+              className="w-11 h-11 rounded-full bg-[#E50914] hover:bg-[#ff1a25] disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 cursor-pointer shadow-lg"
               title="Kirim Pesan"
             >
-              <Send className="w-3.5 h-3.5 ml-0.5" />
+              <Send className="w-4 h-4 ml-0.5" />
             </button>
           </div>
         </div>

@@ -368,7 +368,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         </div>
 
         {/* Bottom Sticky Action Bar */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 bg-[#121212]/98 border-t border-neutral-800 backdrop-blur-md flex items-center gap-2">
+        <div className="absolute bottom-0 left-0 right-0 p-3.5 bg-[#121212]/98 border-t border-neutral-800 backdrop-blur-md flex items-center gap-2.5">
           <button
             type="button"
             onClick={() => {
@@ -382,7 +382,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 })
               );
             }}
-            className="p-2.5 rounded-lg border border-red-600/60 bg-red-950/40 text-[#E50914] hover:bg-red-900/50 flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors"
+            className="w-11 h-11 rounded-xl border border-red-600/60 bg-red-950/40 text-[#E50914] hover:bg-red-900/50 flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors shadow-sm"
             title="Chat Admin & Tanya Part Ini"
           >
             <MessageCircle className="w-5 h-5" />
@@ -390,7 +390,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <button
             onClick={handleAdd}
-            className="flex-1 bg-neutral-800 hover:bg-neutral-700 active:scale-95 text-white font-bold text-xs sm:text-sm py-2.5 px-3 rounded-lg border border-neutral-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            className="flex-1 min-h-[44px] bg-neutral-800 hover:bg-neutral-700 active:scale-95 text-white font-bold text-sm py-2.5 px-4 rounded-xl border border-neutral-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <ShoppingBag className="w-4 h-4 text-neutral-300" />
             <span>+ Keranjang</span>
@@ -398,7 +398,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <button
             onClick={handleBuy}
-            className="flex-1 bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-xs sm:text-sm py-2.5 px-3 rounded-lg shadow-lg shadow-red-950/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            className="flex-1 min-h-[44px] bg-[#E50914] hover:bg-red-700 active:scale-95 text-white font-bold text-sm py-2.5 px-4 rounded-xl shadow-lg shadow-red-950/40 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
             <span>Beli Sekarang</span>
           </button>

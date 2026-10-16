@@ -169,6 +169,28 @@ export const ProductDetailPage: React.FC = () => {
     loadData();
   }, [id]);
 
+  // Real-time 1-second background sync for product stock and price
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const resProds = await safeFetchJson<Product[]>('/api/products');
+        if (Array.isArray(resProds) && resProds.length > 0) {
+          setAllProducts(resProds);
+          const updated = resProds.find((p) => p.id === id || p.slug === id);
+          if (updated) {
+            setProduct((prev) => {
+              if (prev && (prev.stock !== updated.stock || prev.price !== updated.price)) {
+                return updated;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (e) {}
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [id]);
+
   // Variations logic
   const variationGroups = useMemo(() => {
     if (!product) return [];
@@ -654,7 +676,7 @@ export const ProductDetailPage: React.FC = () => {
             </div>
 
             {/* SHOPEE ACTION BUTTONS (MASUKKAN KERANJANG + BELI SEKARANG) */}
-            <div className="mt-8 pt-4 border-t border-neutral-800 flex items-center gap-3 flex-wrap">
+            <div className="mt-8 pt-4 border-t border-neutral-800 flex items-center gap-3.5 flex-wrap">
               {/* Live Chat Mech Consultation */}
               <button
                 type="button"
@@ -668,7 +690,7 @@ export const ProductDetailPage: React.FC = () => {
                     })
                   );
                 }}
-                className="p-3 rounded-lg border border-red-600/60 bg-red-950/40 text-[#E50914] hover:bg-red-900/50 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-12 h-12 rounded-xl border border-red-600/60 bg-red-950/40 text-[#E50914] hover:bg-red-900/50 flex items-center justify-center transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 shrink-0"
                 title="Tanya ke Live Chat Mekanik"
               >
                 <MessageCircle className="w-5 h-5" />
@@ -678,7 +700,7 @@ export const ProductDetailPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleAddToCartClick}
-                className="flex-1 min-w-[180px] bg-[#D0011B]/15 hover:bg-[#D0011B]/25 active:scale-98 text-[#D0011B] font-bold text-sm py-3 px-4 rounded-lg border border-[#D0011B] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                className="flex-1 min-w-[190px] min-h-[48px] bg-[#D0011B]/15 hover:bg-[#D0011B]/25 active:scale-98 text-[#D0011B] font-bold text-sm py-3.5 px-5 rounded-xl border border-[#D0011B] flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-sm"
               >
                 <ShoppingCart className="w-4 h-4" />
                 <span>Masukkan Keranjang</span>
@@ -688,7 +710,7 @@ export const ProductDetailPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleBuyNowClick}
-                className="flex-1 min-w-[180px] bg-[#D0011B] hover:bg-[#b00117] active:scale-98 text-white font-extrabold text-sm py-3 px-4 rounded-lg shadow-lg shadow-red-950/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="flex-1 min-w-[190px] min-h-[48px] bg-[#D0011B] hover:bg-[#b00117] active:scale-98 text-white font-extrabold text-sm py-3.5 px-5 rounded-xl shadow-lg shadow-red-950/60 flex items-center justify-center gap-2.5 transition-all cursor-pointer"
               >
                 <Zap className="w-4 h-4 fill-current" />
                 <span>Beli Sekarang</span>
