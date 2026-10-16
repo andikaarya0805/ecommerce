@@ -18,7 +18,7 @@ import { GarageModal } from './components/GarageModal';
 import { FooterTrustBadges } from './components/FooterTrustBadges';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { AdminPanel } from './pages/AdminPanel';
 import { InvoicePage } from './pages/InvoicePage';
@@ -26,6 +26,7 @@ import { TrackOrderPage } from './pages/TrackOrderPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { CartPage } from './pages/CartPage';
 import { OrderHistoryPage } from './pages/OrderHistoryPage';
+import { ProductDetailPage } from './pages/ProductDetailPage';
 import { useCart } from './context/CartContext';
 import { safeFetchJson } from './config/api';
 
@@ -40,6 +41,7 @@ function StoreFront() {
     appliedVoucher,
     setAppliedVoucher,
   } = useCart();
+  const navigate = useNavigate();
 
   // State variables
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -295,7 +297,9 @@ function StoreFront() {
               products={filteredProducts}
               userBike={userBike}
               onAddToCart={(prod, e) => handleAddToCart(prod, e)}
-              onSelectProduct={(prod) => setSelectedProduct(prod)}
+              onSelectProduct={(prod) => {
+                navigate(`/product/${prod.id}`);
+              }}
               onResetFilters={() => {
                 setSelectedBikeType('all');
                 setSearchQuery('');
@@ -366,6 +370,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<StoreFront />} />
+      <Route path="/product/:id" element={<ProductDetailPage />} />
+      <Route path="/produk/:id" element={<ProductDetailPage />} />
       <Route path="/cart" element={<CartPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/orders" element={<OrderHistoryPage />} />

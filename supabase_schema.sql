@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 2. TABEL USERS (Autentikasi & Role)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY DEFAULT ('u-' || replace(uuid_generate_v4()::text, '-', '')),
-  username TEXT UNIQUE NOT NULL,
+  username TEXT UNIQUE NOT NULL,3
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
