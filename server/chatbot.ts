@@ -58,7 +58,7 @@ export function generateChatbotReply(
   const adminKeywords = ['admin', 'mekanik', 'manusia', 'orang', 'operator', 'cs', 'customer service', 'hubungi orang', 'bicara admin'];
   if (adminKeywords.some((k) => msg.includes(k))) {
     return {
-      reply: `👨‍🔧 **Permintaan Diteruskan ke Admin & Mekanik!**\n\nPesan ${userName} sudah masuk ke prioritas tim admin Jawir Garage. Mekanik kami akan segera merespons chat ini secara langsung.\n\nMohon ditunggu sebentar ya Kak! Jika mendesak, Kakak juga bisa hubungi WhatsApp darurat mekanik kami via tombol di layar.`,
+      reply: `👨‍🔧 **Permintaan Diteruskan ke Admin & Mekanik!**\n\nPesan ${userName} sudah masuk ke prioritas tim admin Jawir Garage. Mekanik kami sedang membuka panel chat dan akan segera merespons percakapan Kakak secara langsung di sini.\n\nMohon ditunggu sebentar ya Kak! 🙏`,
       needsAdminAttention: true,
     };
   }

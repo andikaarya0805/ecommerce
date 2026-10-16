@@ -52,9 +52,9 @@ export const FooterTrustBadges: React.FC = () => {
             </div>
           </div>
 
-          {/* Badge 4: Direct WhatsApp Support */}
+          {/* Badge 4: Direct Live Chat Support */}
           <div className="flex items-start gap-3 p-3 rounded-lg bg-neutral-900/60 border border-neutral-800/80">
-            <div className="w-9 h-9 rounded-lg bg-emerald-600/15 border border-emerald-500/40 flex items-center justify-center flex-shrink-0 text-emerald-400">
+            <div className="w-9 h-9 rounded-lg bg-red-600/15 border border-red-500/40 flex items-center justify-center flex-shrink-0 text-[#E50914]">
               <MessageSquare className="w-5 h-5" />
             </div>
             <div>
@@ -62,18 +62,18 @@ export const FooterTrustBadges: React.FC = () => {
                 Tanya Mekanik Langsung
               </h4>
               <p className="text-[11px] text-neutral-400 mt-0.5 leading-snug">
-                Konsultasi settingan kirian CVT gratis via WhatsApp hotline.
+                Konsultasi settingan kirian CVT gratis via Live Chat & Bot 24 Jam.
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* WhatsApp Support Banner CTA */}
+      {/* Live Chat Support Banner CTA */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="p-4 rounded-xl bg-gradient-to-r from-neutral-900 via-neutral-850 to-neutral-900 border border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center flex-shrink-0 text-emerald-400">
+            <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/50 flex items-center justify-center flex-shrink-0 text-[#E50914]">
               <MessageSquare className="w-5 h-5" />
             </div>
             <div>
@@ -86,16 +86,23 @@ export const FooterTrustBadges: React.FC = () => {
             </div>
           </div>
 
-          <a
-            id="footer-whatsapp-btn"
-            href="https://wa.me/6281234567890?text=Halo%20Jawir%20Garage,%20saya%20mau%20konsultasi%20upgrade%20kirian%20motor"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-lg shadow-md transition-all whitespace-nowrap"
+          <button
+            id="footer-live-chat-btn"
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('open-jawir-chat', {
+                  detail: {
+                    initialMessage: 'Halo Jawir Garage, saya mau konsultasi racikan upgrade kirian motor!',
+                  },
+                })
+              );
+            }}
+            className="inline-flex items-center gap-2 bg-[#E50914] hover:bg-[#ff1a25] active:scale-95 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-lg shadow-md transition-all whitespace-nowrap cursor-pointer"
           >
             <MessageSquare className="w-4 h-4 fill-current" />
-            <span>Chat WhatsApp Mekanik</span>
-          </a>
+            <span>Chat Mekanik & Admin</span>
+          </button>
         </div>
       </div>
 
@@ -169,7 +176,21 @@ export const FooterTrustBadges: React.FC = () => {
           <span>•</span>
           <a href="/login" className="hover:text-white transition-colors">Portal Member / Admin</a>
           <span>•</span>
-          <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Bantuan Customer Service</a>
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('open-jawir-chat', {
+                  detail: {
+                    initialMessage: 'Halo Tim Bantuan Jawir Garage, saya butuh bantuan!',
+                  },
+                })
+              );
+            }}
+            className="hover:text-white transition-colors cursor-pointer"
+          >
+            Bantuan Customer Service
+          </button>
         </div>
         <p>© 2026 Platinum Racing by Jawir Garage Speedshop. D2C Architecture & Database Atomic Transaction.</p>
       </div>

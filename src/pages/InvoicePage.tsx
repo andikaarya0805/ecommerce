@@ -497,15 +497,22 @@ export const InvoicePage: React.FC = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
-                <a
-                  href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Speedshop,%20saya%20konfirmasi%20pesanan%20COD%20No.%20Pesanan%20${encodeURIComponent(order.invoice_number)}%20total%20${encodeURIComponent(formatIDR(order.grand_total))}.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:flex-1 py-2.5 px-4 rounded bg-[#25D366] hover:bg-[#1EBE5D] text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent('open-jawir-chat', {
+                        detail: {
+                          initialMessage: `Halo Jawir Speedshop, saya konfirmasi pesanan COD No. Pesanan ${order.invoice_number} total ${formatIDR(order.grand_total)}.`,
+                        },
+                      })
+                    );
+                  }}
+                  className="w-full sm:flex-1 py-2.5 px-4 rounded bg-[#E50914] hover:bg-[#ff1a25] text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>Konfirmasi Pesanan COD ke WhatsApp Admin</span>
-                </a>
+                  <span>Konfirmasi Pesanan COD ke Live Chat Admin</span>
+                </button>
 
                 <button
                   onClick={handleCancelOrder}
@@ -765,17 +772,22 @@ export const InvoicePage: React.FC = () => {
                 Beli Lagi
               </button>
             )}
-            <a
-              href={`https://wa.me/6281234567890?text=Halo%20Jawir%20Speedshop,%20saya%20ingin%20tanya%20mengenai%20pesanan%20No.%20${encodeURIComponent(
-                order.invoice_number
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 sm:flex-initial py-2.5 px-5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm"
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('open-jawir-chat', {
+                    detail: {
+                      initialMessage: `Halo Jawir Speedshop, saya ingin tanya mengenai pesanan No. ${order.invoice_number}`,
+                    },
+                  })
+                );
+              }}
+              className="flex-1 sm:flex-initial py-2.5 px-5 rounded-md bg-neutral-900 border border-neutral-700 hover:border-red-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
             >
-              <MessageCircle className="w-4 h-4" />
-              <span>Bantuan WhatsApp</span>
-            </a>
+              <MessageCircle className="w-4 h-4 text-[#E50914]" />
+              <span>Bantuan Live Chat</span>
+            </button>
           </div>
         </div>
       </main>

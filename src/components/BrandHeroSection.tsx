@@ -71,13 +71,15 @@ export const BrandHeroSection: React.FC<BrandHeroSectionProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const handleOpenWhatsApp = () => {
-    const phone = '6281234567890';
+  const handleOpenLiveChat = () => {
     const bikeText = selectedBike ? ` untuk motor ${selectedBike.name}` : '';
-    const msg = encodeURIComponent(
-      `Halo Mekanik Jawir Garage, saya mau konsultasi rekomendasi upgrade part${bikeText}...`
+    window.dispatchEvent(
+      new CustomEvent('open-jawir-chat', {
+        detail: {
+          initialMessage: `Halo Mekanik Jawir Garage, saya mau konsultasi rekomendasi upgrade part${bikeText}`,
+        },
+      })
     );
-    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
   };
 
   const handleScrollToCatalog = () => {
@@ -175,11 +177,11 @@ export const BrandHeroSection: React.FC<BrandHeroSectionProps> = ({
               </button>
 
               <button
-                onClick={handleOpenWhatsApp}
+                onClick={handleOpenLiveChat}
                 className="inline-flex items-center gap-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-lg border border-neutral-800 hover:border-neutral-700 transition-all cursor-pointer"
               >
-                <MessageCircle className="w-4 h-4 text-emerald-400" />
-                <span>Tanya Mekanik</span>
+                <MessageCircle className="w-4 h-4 text-[#E50914]" />
+                <span>Chat Mekanik</span>
               </button>
             </div>
           </div>

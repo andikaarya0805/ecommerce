@@ -23,15 +23,22 @@ export const AnnouncementBar: React.FC = () => {
             <Truck className="w-3 h-3 text-[#E50914]" />
             Kirim Hari Ini Sebelum 16:00
           </span>
-          <a
-            href="https://wa.me/6281234567890?text=Halo%20Jawir%20Garage,%20saya%20mau%20konsultasi%20upgrade%20kirian%20motor"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden md:inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 transition-colors"
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('open-jawir-chat', {
+                  detail: {
+                    initialMessage: 'Halo Jawir Garage, saya mau konsultasi upgrade kirian motor!',
+                  },
+                })
+              );
+            }}
+            className="hidden md:inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
           >
             <MessageCircle className="w-3 h-3" />
             CS Mekanik: Online
-          </a>
+          </button>
         </div>
       </div>
     </aside>

@@ -232,16 +232,6 @@ export const LiveChatWidget: React.FC = () => {
       {/* Floating Action Trigger Button */}
       {!isOpen && (
         <div className="flex items-center gap-2">
-          {/* Quick WhatsApp backup icon */}
-          <a
-            href="https://wa.me/6281234567890?text=Halo%20Mekanik%20Jawir%20Garage,%20saya%20mau%20konsultasi%20part%20kirian%20CVT"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Chat WhatsApp Mekanik"
-            className="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg border border-emerald-400/30 transition-transform hover:scale-105 active:scale-95"
-          >
-            <Phone className="w-4 h-4 fill-current" />
-          </a>
 
           {/* Main Shopee Live Chat Button */}
           <button
@@ -292,17 +282,6 @@ export const LiveChatWidget: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1">
-              {/* WhatsApp direct fallback */}
-              <a
-                href="https://wa.me/6281234567890?text=Halo%20Mekanik%20Jawir%20Garage"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Hubungi via WhatsApp Mekanik"
-                className="p-1.5 text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800 rounded-lg transition-colors"
-              >
-                <Phone className="w-4 h-4" />
-              </a>
-
               {/* Minimize */}
               <button
                 onClick={() => setIsOpen(false)}

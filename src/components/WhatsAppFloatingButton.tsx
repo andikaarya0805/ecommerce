@@ -22,13 +22,20 @@ export const WhatsAppFloatingButton: React.FC = () => {
       )}
 
       {/* Floating Action Button */}
-      <a
+      <button
         id="floating-whatsapp-btn"
-        href="https://wa.me/6281234567890?text=Halo%20Mekanik%20Jawir%20Garage,%20saya%20mau%20konsultasi%20part%20kirian%20CVT"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white p-3 sm:px-4 sm:py-2.5 rounded-full shadow-2xl shadow-emerald-950/60 border border-emerald-400/40 transition-all cursor-pointer"
-        aria-label="Chat WhatsApp Mekanik"
+        type="button"
+        onClick={() => {
+          window.dispatchEvent(
+            new CustomEvent('open-jawir-chat', {
+              detail: {
+                initialMessage: 'Halo Mekanik Jawir Garage, saya mau konsultasi part kirian CVT!',
+              },
+            })
+          );
+        }}
+        className="group relative flex items-center gap-2 bg-[#E50914] hover:bg-[#ff1a25] active:scale-95 text-white p-3 sm:px-4 sm:py-2.5 rounded-full shadow-2xl shadow-red-950/60 border border-red-400/40 transition-all cursor-pointer"
+        aria-label="Chat Live Mekanik"
       >
         <span className="relative flex h-3 w-3">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
@@ -36,9 +43,9 @@ export const WhatsAppFloatingButton: React.FC = () => {
         </span>
         <MessageCircle className="w-5 h-5 fill-current" />
         <span className="hidden sm:inline text-xs font-bold font-heading uppercase tracking-wider">
-          Tanya Mekanik
+          Chat Live Mekanik
         </span>
-      </a>
+      </button>
     </div>
   );
 };

@@ -655,18 +655,24 @@ export const ProductDetailPage: React.FC = () => {
 
             {/* SHOPEE ACTION BUTTONS (MASUKKAN KERANJANG + BELI SEKARANG) */}
             <div className="mt-8 pt-4 border-t border-neutral-800 flex items-center gap-3 flex-wrap">
-              {/* WhatsApp Mech Consultation */}
-              <a
-                href={`https://wa.me/6281234567890?text=Halo%20Mekanik%20Jawir%20Garage,%20saya%20mau%20konsultasi%20part:%20${encodeURIComponent(
-                  product.name
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-3 rounded-lg border border-emerald-600/60 bg-emerald-950/40 text-emerald-400 hover:bg-emerald-900/50 flex items-center justify-center transition-colors"
-                title="Tanya ke WhatsApp Mekanik"
+              {/* Live Chat Mech Consultation */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent('open-jawir-chat', {
+                      detail: {
+                        product,
+                        initialMessage: `Halo Mekanik Jawir Garage, saya mau konsultasi part: ${product.name}`,
+                      },
+                    })
+                  );
+                }}
+                className="p-3 rounded-lg border border-red-600/60 bg-red-950/40 text-[#E50914] hover:bg-red-900/50 flex items-center justify-center transition-colors cursor-pointer"
+                title="Tanya ke Live Chat Mekanik"
               >
                 <MessageCircle className="w-5 h-5" />
-              </a>
+              </button>
 
               {/* Shopee style "+ Masukkan Keranjang" Button */}
               <button
@@ -822,7 +828,7 @@ export const ProductDetailPage: React.FC = () => {
                 <p className="font-bold text-white">CATATAN PENTING MEKANIK JAWIR GARAGE:</p>
                 <p>• Pemasangan Plug & Play (PnP) tanpa ubahan rangka atau kabel.</p>
                 <p>• Pastikan memilih varian tipe motor yang sesuai dengan kendaraanmu.</p>
-                <p>• Bila ragu, gunakan fitur chat WhatsApp mekanik kami untuk konsultasi racikan terbaik.</p>
+                <p>• Bila ragu, gunakan fitur Live Chat mekanik kami untuk konsultasi racikan terbaik.</p>
               </div>
             </div>
           </div>
@@ -985,9 +991,6 @@ export const ProductDetailPage: React.FC = () => {
 
       {/* Trust Badges & Footer */}
       <FooterTrustBadges />
-
-      {/* WhatsApp floating button */}
-      <WhatsAppFloatingButton />
 
       {/* Cart Drawer */}
       <CartDrawer

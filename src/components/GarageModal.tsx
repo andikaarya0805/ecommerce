@@ -134,11 +134,29 @@ export const GarageModal: React.FC<GarageModalProps> = ({
         </div>
 
         {/* Tip Box */}
-        <div className="mt-4 pt-3 border-t border-neutral-800 flex items-start gap-2 text-[11px] text-neutral-400">
-          <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <span>
-            Motormu tidak ada di daftar? Tenang, kamu tetap bisa tanya langsung spek pulley atau roller ke mekanik kami via WhatsApp.
-          </span>
+        <div className="mt-4 pt-3 border-t border-neutral-800 flex items-start justify-between gap-2 text-[11px] text-neutral-400">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <span>
+              Motormu tidak ada di daftar? Tenang, kamu tetap bisa tanya langsung spek pulley atau roller ke mekanik kami via Live Chat.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              window.dispatchEvent(
+                new CustomEvent('open-jawir-chat', {
+                  detail: {
+                    initialMessage: 'Halo Mekanik Jawir Garage, motor saya tidak ada di daftar garasi. Mau tanya spek racikan yang cocok...',
+                  },
+                })
+              );
+            }}
+            className="text-[#E50914] hover:underline font-bold whitespace-nowrap cursor-pointer shrink-0 ml-2"
+          >
+            Chat Sekarang →
+          </button>
         </div>
       </div>
     </div>

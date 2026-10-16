@@ -369,17 +369,24 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
         {/* Bottom Sticky Action Bar */}
         <div className="absolute bottom-0 left-0 right-0 p-3 bg-[#121212]/98 border-t border-neutral-800 backdrop-blur-md flex items-center gap-2">
-          <a
-            href={`https://wa.me/6281234567890?text=Halo%20Mekanik%20Jawir%20Garage,%20saya%20mau%20order%20part:%20${encodeURIComponent(
-              product.name
-            )}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2.5 rounded-lg border border-emerald-600/60 bg-emerald-950/40 text-emerald-400 hover:bg-emerald-900/50 flex items-center justify-center flex-shrink-0"
-            title="Tanya ke WhatsApp Mekanik"
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              window.dispatchEvent(
+                new CustomEvent('open-jawir-chat', {
+                  detail: {
+                    product,
+                    initialMessage: `Halo Admin, saya mau tanya part ${product.name}`,
+                  },
+                })
+              );
+            }}
+            className="p-2.5 rounded-lg border border-red-600/60 bg-red-950/40 text-[#E50914] hover:bg-red-900/50 flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors"
+            title="Chat Admin & Tanya Part Ini"
           >
             <MessageCircle className="w-5 h-5" />
-          </a>
+          </button>
 
           <button
             onClick={handleAdd}
