@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (product: Product, quantity?: number, selectedVariant?: string) => void;
+  addToCart: (product: Product, quantity?: number, selectedVariant?: string, customPrice?: number) => void;
   updateQuantity: (productId: string, delta: number, selectedVariant?: string) => void;
   removeItem: (productId: string, selectedVariant?: string) => void;
   clearCart: () => void;
@@ -72,7 +72,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [items, user?.id]);
 
-  const addToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
+  const addToCart = (product: Product, quantity = 1, selectedVariant?: string, customPrice?: number) => {
     setItems((prev) => {
       const variantKey = selectedVariant?.trim() || '';
       const existingIndex = prev.findIndex(
@@ -81,11 +81,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (existingIndex > -1) {
         return prev.map((item, idx) =>
           idx === existingIndex
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: item.quantity + quantity, customPrice: customPrice ?? item.customPrice }
             : item
         );
       }
-      return [...prev, { product, quantity, selectedVariant: variantKey || undefined }];
+      return [...prev, { product, quantity, selectedVariant: variantKey || undefined, customPrice }];
     });
   };
 
@@ -124,7 +124,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const totalItemsCount = items.reduce((s, i) => s + i.quantity, 0);
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const subtotal = items.reduce((s, i) => s + (i.customPrice ?? i.product.price) * i.quantity, 0);
 
   return (
     <CartContext.Provider

@@ -129,14 +129,14 @@ function StoreFront() {
     setVariationProduct(product);
   };
 
-  const handleConfirmVariationAddToCart = (product: Product, quantity = 1, selectedVariant?: string) => {
-    addToCart(product, quantity, selectedVariant);
+  const handleConfirmVariationAddToCart = (product: Product, quantity = 1, selectedVariant?: string, customPrice?: number) => {
+    addToCart(product, quantity, selectedVariant, customPrice);
     const variantTag = selectedVariant ? ` [${selectedVariant}]` : '';
     addToast('Ditambahkan ke Keranjang', `${product.name.slice(0, 32)}...${variantTag}`);
   };
 
-  const handleConfirmVariationBuyNow = (product: Product, quantity = 1, selectedVariant?: string) => {
-    addToCart(product, quantity, selectedVariant);
+  const handleConfirmVariationBuyNow = (product: Product, quantity = 1, selectedVariant?: string, customPrice?: number) => {
+    addToCart(product, quantity, selectedVariant, customPrice);
     setIsCartOpen(true);
   };
 

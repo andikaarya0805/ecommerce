@@ -4,15 +4,18 @@ import { formatIDR } from './ProductCard';
 import {
   getProductVariationGroups,
   getOptionName,
+  getOptionPrice,
   getOptionPriceModifier,
+  getProductPriceRange,
+  calculateSelectedPrice,
 } from '../data/productVariations';
 import { X, Star, ShoppingBag, CheckCircle, ShieldAlert, Zap, Truck, MessageCircle, Check, AlertCircle } from 'lucide-react';
 
 interface ProductDetailModalProps {
   product: Product | null;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity: number, selectedVariant?: string) => void;
-  onBuyNow?: (product: Product, quantity: number, selectedVariant?: string) => void;
+  onAddToCart: (product: Product, quantity: number, selectedVariant?: string, customPrice?: number) => void;
+  onBuyNow?: (product: Product, quantity: number, selectedVariant?: string, customPrice?: number) => void;
   userBike: UserBike | null;
   onOpenGarage: () => void;
 }
@@ -33,6 +36,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const variationGroups = useMemo(() => {
     if (!product) return [];
     return getProductVariationGroups(product);
+  }, [product]);
+
+  const priceRange = useMemo(() => {
+    if (!product) return { minPrice: 0, maxPrice: 0, hasRange: false };
+    return getProductPriceRange(product);
   }, [product]);
 
   useEffect(() => {
@@ -57,60 +65,70 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           });
           if (matchingOpt) {
             initial[group.name] = getOptionName(matchingOpt);
-            return;
           }
         }
-        if (group.options.length > 0) {
-          initial[group.name] = getOptionName(group.options[0]);
-        }
       });
+
+      // If no range, select 1st option by default
+      if (!priceRange.hasRange && groups.length > 0) {
+        groups.forEach((g) => {
+          if (!initial[g.name] && g.options.length > 0) {
+            initial[g.name] = getOptionName(g.options[0]);
+          }
+        });
+      }
 
       setSelectedOptions(initial);
       setQuantity(1);
       setValidationError(null);
     }
-  }, [product, userBike]);
+  }, [product, userBike, priceRange.hasRange]);
 
   if (!product) return null;
 
   const isCompatibleWithUser =
     userBike && product.bikeCompatibility?.includes(userBike.type);
 
-  let dynamicPrice = product.price;
-  let dynamicOriginalPrice = product.originalPrice || product.price;
-
-  variationGroups.forEach((group) => {
-    const selected = selectedOptions[group.name];
-    if (selected) {
-      const opt = group.options.find((o) => getOptionName(o) === selected);
-      if (opt) {
-        const mod = getOptionPriceModifier(opt);
-        dynamicPrice += mod;
-        dynamicOriginalPrice += mod;
-      }
-    }
-  });
+  const { dynamicPrice, dynamicOriginalPrice } = calculateSelectedPrice(product, selectedOptions);
+  const hasAnySelection = Object.keys(selectedOptions).length > 0;
+  const unselectedGroups = variationGroups.filter((g) => !selectedOptions[g.name]);
+  const isAllSelected = unselectedGroups.length === 0;
 
   const variantString = Object.values(selectedOptions).filter(Boolean).join(' • ');
 
   const handleSelectOption = (groupName: string, optionName: string) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [groupName]: optionName,
-    }));
+    setSelectedOptions((prev) => {
+      if (prev[groupName] === optionName) {
+        const copy = { ...prev };
+        delete copy[groupName];
+        return copy;
+      }
+      return {
+        ...prev,
+        [groupName]: optionName,
+      };
+    });
     setValidationError(null);
   };
 
   const handleAdd = () => {
-    onAddToCart(product, quantity, variantString || undefined);
+    if (variationGroups.length > 0 && !isAllSelected) {
+      setValidationError(`Silakan pilih: ${unselectedGroups.map((g) => g.name).join(', ')}`);
+      return;
+    }
+    onAddToCart(product, quantity, variantString || undefined, dynamicPrice);
     onClose();
   };
 
   const handleBuy = () => {
+    if (variationGroups.length > 0 && !isAllSelected) {
+      setValidationError(`Silakan pilih: ${unselectedGroups.map((g) => g.name).join(', ')}`);
+      return;
+    }
     if (onBuyNow) {
-      onBuyNow(product, quantity, variantString || undefined);
+      onBuyNow(product, quantity, variantString || undefined, dynamicPrice);
     } else {
-      onAddToCart(product, quantity, variantString || undefined);
+      onAddToCart(product, quantity, variantString || undefined, dynamicPrice);
     }
     onClose();
   };
@@ -178,11 +196,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </h2>
 
             {/* Price Box */}
-            <div className="mt-2.5 flex items-baseline gap-2">
-              <span className="font-racing font-black text-xl sm:text-2xl text-[#E50914]">
-                {formatIDR(dynamicPrice)}
-              </span>
-              {dynamicOriginalPrice > dynamicPrice && (
+            <div className="mt-2.5 flex items-baseline gap-2 flex-wrap">
+              {priceRange.hasRange && !hasAnySelection ? (
+                <span className="font-racing font-black text-xl sm:text-2xl text-[#E50914] tracking-tight">
+                  Rp{priceRange.minPrice.toLocaleString('id-ID')} - Rp{priceRange.maxPrice.toLocaleString('id-ID')}
+                </span>
+              ) : (
+                <span className="font-racing font-black text-xl sm:text-2xl text-[#E50914] tracking-tight">
+                  {formatIDR(dynamicPrice)}
+                </span>
+              )}
+              {hasAnySelection && dynamicOriginalPrice > dynamicPrice && (
                 <span className="text-xs text-neutral-500 line-through">
                   {formatIDR(dynamicOriginalPrice)}
                 </span>
@@ -308,7 +332,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       <div className="flex flex-wrap gap-2">
                         {group.options.map((opt) => {
                           const optName = getOptionName(opt);
-                          const optMod = getOptionPriceModifier(opt);
+                          const optPrice = getOptionPrice(opt, product.price);
+                          const optMod = getOptionPriceModifier(opt, product.price);
                           const isSelected = currentSelected === optName;
 
                           return (
@@ -322,11 +347,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                                   : 'bg-[#1e1e1e] border border-neutral-700 hover:border-neutral-500 text-neutral-300'
                               }`}
                             >
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span>{optName}</span>
-                                {optMod > 0 && (
+                                {typeof opt === 'object' && opt.price && opt.price > 0 ? (
+                                  <span className="text-[10px] text-neutral-400 font-normal">
+                                    ({formatIDR(opt.price)})
+                                  </span>
+                                ) : optMod > 0 ? (
                                   <span className="text-[10px] opacity-80">(+{formatIDR(optMod)})</span>
-                                )}
+                                ) : null}
                               </div>
                               {isSelected && (
                                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#D0011B] rounded-tl flex items-center justify-center">

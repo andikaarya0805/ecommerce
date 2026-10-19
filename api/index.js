@@ -385,6 +385,82 @@ var INITIAL_PRODUCTS = [
     stock: 21,
     originCity: "Jakarta Timur",
     bikeCompatibility: ["vario-pcx"]
+  },
+  {
+    id: "prod-noken-as-ah1",
+    name: "Noken As Camshaft BRT AH1 Racing Series - Beat Vario Scoopy PCX NMAX",
+    category: "mesin",
+    compatibilityText: "Universal Matic: Beat, Scoopy, Vario 125/150/160, NMAX, Aerox",
+    fitmentTag: "Plug & Play (PnP)",
+    price: 185e3,
+    originalPrice: 26e4,
+    discountPercent: 29,
+    promoTag: "Flash Sale",
+    rating: 4.9,
+    soldCount: 1842,
+    image: "/images/noken_as_ah1.jpg",
+    description: "Noken As Camshaft BRT AH1 Racing Series dirancang dengan profile lift tinggi untuk meningkatkan nafas mesin putaran atas dan akselerasi responsif. Pilihan paket lengkap dengan per klep racing jepang anti floating.",
+    specs: {
+      "Bahan": "Billet Hardened Alloy Steel",
+      "Durasi": "In 245\xB0 / Ex 245\xB0",
+      "Lift Klep": "7.8 mm (High Lift)",
+      "Peruntukan": "Harian Touring & Balap Liar 500m"
+    },
+    isPromo: true,
+    isPaketUpgrade: false,
+    stock: 45,
+    weight_grams: 650,
+    originCity: "Jakarta Timur",
+    bikeCompatibility: ["vario-pcx", "nmax-aerox", "beat-scoopy", "mio-series"],
+    variationGroups: [
+      {
+        name: "PILIHAN TIPE / PAKET",
+        options: [
+          { name: "AH1 - T1", price: 185e3, stock: 20 },
+          { name: "AH1 - T2", price: 185e3, stock: 15 },
+          { name: "AH1 - T3", price: 185e3, stock: 10 },
+          { name: "NOKEN AS + PER KLP", price: 245703, stock: 18 }
+        ]
+      }
+    ]
+  },
+  {
+    id: "prod-bore-up-ah1",
+    name: "Blok Seher Silinder Keramik Bore Up Racing AH1 - 54mm 58mm 62mm 66mm",
+    category: "mesin",
+    compatibilityText: "Vario 125/150, PCX 150/160, Beat FI, NMAX 155, Aerox",
+    fitmentTag: "Plug & Play (PnP)",
+    price: 355e3,
+    originalPrice: 75e4,
+    discountPercent: 53,
+    promoTag: "Best Seller",
+    rating: 5,
+    soldCount: 963,
+    image: "/images/block_silinder_boreup.jpg",
+    description: "Blok silinder bore up dengan liner keramik nikasil tahan panas dan gesekan tinggi. Piston forging kompresi padat meningkatkan cc mesin dan tenaga hingga +35% tanpa khawatir overheating.",
+    specs: {
+      "Lapisan": "Ceramic Nikasil Liner",
+      "Piston": "Forging Dome Racing Piston",
+      "Kelengkapan": "Blok, Piston, Ring RIK, Pen, Klip, Paking",
+      "Kapasitas": "130cc - 200cc Up"
+    },
+    isPromo: true,
+    isPaketUpgrade: false,
+    stock: 32,
+    weight_grams: 1400,
+    originCity: "Jakarta Timur",
+    bikeCompatibility: ["vario-pcx", "nmax-aerox", "beat-scoopy"],
+    variationGroups: [
+      {
+        name: "UKURAN BORING / PISTON",
+        options: [
+          { name: "54 mm (Standar)", price: 355e3, stock: 10 },
+          { name: "58 mm (150cc Harian)", price: 42e4, stock: 12 },
+          { name: "62 mm (180cc Touring)", price: 51e4, stock: 6 },
+          { name: "66 mm (200cc Super Race)", price: 665e3, stock: 4 }
+        ]
+      }
+    ]
   }
 ];
 
@@ -439,6 +515,8 @@ function createInMemoryDb() {
   ];
   const orders = [];
   const order_items = [];
+  const chat_rooms = [];
+  const chat_messages = [];
   return {
     isInMemory: true,
     exec(sql) {
@@ -485,9 +563,31 @@ function createInMemoryDb() {
             }
             return products;
           }
+          if (cleanSql.includes("FROM chat_rooms")) {
+            return [...chat_rooms].sort(
+              (a, b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime()
+            );
+          }
+          if (cleanSql.includes("FROM chat_messages")) {
+            const rId = params[0];
+            return chat_messages.filter((m) => m.room_id === rId).sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          }
           return [];
         },
         get(...params) {
+          if (cleanSql.includes("FROM chat_rooms WHERE id = ?")) {
+            const id = params[0];
+            return chat_rooms.find((r) => r.id === id);
+          }
+          if (cleanSql.includes("FROM chat_rooms WHERE user_id = ?")) {
+            const uId = params[0];
+            return chat_rooms.find((r) => r.user_id === uId);
+          }
+          if (cleanSql.includes("FROM chat_rooms WHERE unread_admin > 0")) {
+            return { count: chat_rooms.filter((r) => (r.unread_admin || 0) > 0).length };
+          }
           if (cleanSql.includes("FROM users WHERE username = ?")) {
             const uName = params[0];
             return users.find((u) => u.username === uName);
@@ -812,6 +912,81 @@ function createInMemoryDb() {
             if (v) v.is_active = st;
             return { changes: 1, lastInsertRowid: 0 };
           }
+          if (cleanSql.includes("INSERT INTO chat_rooms")) {
+            const [id, user_id, user_name, last_message, last_message_at, unread_admin, unread_user, bot_enabled, created_at] = params;
+            chat_rooms.push({
+              id,
+              user_id: user_id || null,
+              user_name,
+              last_message: last_message || "",
+              last_message_at: last_message_at || (/* @__PURE__ */ new Date()).toISOString(),
+              unread_admin: unread_admin ?? 0,
+              unread_user: unread_user ?? 0,
+              bot_enabled: bot_enabled ?? 1,
+              created_at: created_at || (/* @__PURE__ */ new Date()).toISOString()
+            });
+            return { changes: 1, lastInsertRowid: chat_rooms.length };
+          }
+          if (cleanSql.includes("INSERT INTO chat_messages")) {
+            const [id, room_id, sender_type, sender_name, message, product_payload, created_at] = params;
+            chat_messages.push({
+              id,
+              room_id,
+              sender_type,
+              sender_name,
+              message,
+              product_payload: product_payload || null,
+              created_at: created_at || (/* @__PURE__ */ new Date()).toISOString()
+            });
+            return { changes: 1, lastInsertRowid: chat_messages.length };
+          }
+          if (cleanSql.includes("UPDATE chat_rooms SET last_message =") && cleanSql.includes("unread_admin = unread_admin + 1")) {
+            const [last_message, last_message_at, id] = params;
+            const r = chat_rooms.find((rm) => rm.id === id);
+            if (r) {
+              r.last_message = last_message;
+              r.last_message_at = last_message_at;
+              r.unread_admin = (r.unread_admin || 0) + 1;
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("UPDATE chat_rooms SET last_message =") && cleanSql.includes("unread_user = unread_user + 1")) {
+            const [last_message, last_message_at, id] = params;
+            const r = chat_rooms.find((rm) => rm.id === id);
+            if (r) {
+              r.last_message = last_message;
+              r.last_message_at = last_message_at;
+              r.unread_user = (r.unread_user || 0) + 1;
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("UPDATE chat_rooms SET unread_admin = 0 WHERE id = ?")) {
+            const [id] = params;
+            const r = chat_rooms.find((rm) => rm.id === id);
+            if (r) r.unread_admin = 0;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("UPDATE chat_rooms SET unread_user = 0 WHERE id = ?")) {
+            const [id] = params;
+            const r = chat_rooms.find((rm) => rm.id === id);
+            if (r) r.unread_user = 0;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("UPDATE chat_rooms SET bot_enabled = ? WHERE id = ?")) {
+            const [bot_enabled, id] = params;
+            const r = chat_rooms.find((rm) => rm.id === id);
+            if (r) r.bot_enabled = bot_enabled;
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("DELETE FROM chat_rooms WHERE id = ?")) {
+            const [id] = params;
+            const idx = chat_rooms.findIndex((rm) => rm.id === id);
+            if (idx !== -1) chat_rooms.splice(idx, 1);
+            for (let i = chat_messages.length - 1; i >= 0; i--) {
+              if (chat_messages[i].room_id === id) chat_messages.splice(i, 1);
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
           return { changes: 0, lastInsertRowid: 0 };
         }
       };
@@ -897,8 +1072,11 @@ function seedDatabase(targetDb = db) {
       INSERT OR IGNORE INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
         discountPercent, promoTag, rating, soldCount, image, description, specs,
-        isPromo, isPaketUpgrade, stock, weight_grams, originCity, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, bike_variants, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `);
+    const updateProductVarGroups = targetDb.prepare(`
+      UPDATE products SET variation_groups = ?, bike_variants = ? WHERE id = ?
     `);
     const insertCompatibility = targetDb.prepare(`
       INSERT OR IGNORE INTO product_bike_compatibility (product_id, bike_type)
@@ -926,8 +1104,17 @@ function seedDatabase(targetDb = db) {
         p.isPaketUpgrade ? 1 : 0,
         p.stock,
         p.weight_grams || 500,
-        p.originCity
+        p.originCity,
+        p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+        p.bikeVariants ? JSON.stringify(p.bikeVariants) : null
       );
+      if (p.variationGroups || p.bikeVariants) {
+        updateProductVarGroups.run(
+          p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+          p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
+          p.id
+        );
+      }
       if (p.bikeCompatibility) {
         for (const bike of p.bikeCompatibility) {
           insertCompatibility.run(p.id, bike);
@@ -1057,6 +1244,30 @@ function initDb() {
         subtotal INTEGER NOT NULL,
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS chat_rooms (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        user_name TEXT NOT NULL,
+        last_message TEXT,
+        last_message_at TEXT NOT NULL DEFAULT (datetime('now')),
+        unread_admin INTEGER NOT NULL DEFAULT 0,
+        unread_user INTEGER NOT NULL DEFAULT 0,
+        bot_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        room_id TEXT NOT NULL,
+        sender_type TEXT NOT NULL,
+        sender_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        product_payload TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE
+      );
     `);
     ensureColumn("products", "slug", "TEXT");
     ensureColumn("products", "weight_grams", "INTEGER DEFAULT 500");
@@ -1108,6 +1319,8 @@ function initDb() {
         CREATE INDEX IF NOT EXISTS idx_orders_invoice ON orders(invoice_number);
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
+        CREATE INDEX IF NOT EXISTS idx_chat_rooms_last ON chat_rooms(last_message_at);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id);
       `);
     } catch (err) {
       console.warn("[DB] Index creation warning:", err);
@@ -1142,11 +1355,7 @@ function initDb() {
         "user"
       );
     }
-    const prodCount = db.prepare("SELECT COUNT(*) as count FROM products").get();
-    if (!prodCount || prodCount.count === 0) {
-      console.log("[DB] Fresh database detected. Running auto-seed...");
-      seedDatabase(db);
-    }
+    seedDatabase(db);
   } catch (initErr) {
     console.warn("[DB] initDb warning:", initErr);
   }
@@ -1621,6 +1830,299 @@ async function trackBiteshipShipment(trackingIdOrWaybill, courierCode) {
   }
 }
 
+// server/chatbot.ts
+function formatIDR(num) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0
+  }).format(num);
+}
+function generateChatbotReply(userMessage, context) {
+  const msg = (userMessage || "").trim().toLowerCase();
+  const userName = context.userName || "Kak";
+  if (context.attachedProduct) {
+    const prod = context.attachedProduct;
+    const isReady = (prod.stock ?? 0) > 0;
+    const stockMsg = isReady ? `\u2705 **Produk READY STOK (${prod.stock} pcs)**` : `\u26A0\uFE0F **Stok Saat Ini Sedang Kosong (Pre-Order / Restock)**`;
+    return {
+      reply: `Halo ${userName}! Terima kasih sudah tertarik dengan **${prod.name}**.
+
+${stockMsg}
+\u2022 Harga: **${formatIDR(prod.price)}**${prod.discountPercent ? ` (Diskon ${prod.discountPercent}%)` : ""}
+\u2022 Kompatibilitas: ${prod.compatibilityText || "Berbagai matic"}
+
+Produk ini 100% Original Jawir Garage dengan garansi presisi & bubble wrap tebal. Ada yang ingin ditanyakan seputar ukuran roller atau pasang di motor Kakak?`,
+      productPayload: {
+        id: prod.id,
+        name: prod.name,
+        slug: prod.slug,
+        price: prod.price,
+        originalPrice: prod.originalPrice,
+        discountPercent: prod.discountPercent,
+        image: prod.image,
+        stock: prod.stock,
+        rating: prod.rating || 5,
+        soldCount: prod.soldCount || 0
+      }
+    };
+  }
+  const adminKeywords = ["admin", "mekanik", "manusia", "orang", "operator", "cs", "customer service", "hubungi orang", "bicara admin"];
+  if (adminKeywords.some((k) => msg.includes(k))) {
+    return {
+      reply: `\u{1F468}\u200D\u{1F527} **Permintaan Diteruskan ke Admin & Mekanik!**
+
+Pesan ${userName} sudah masuk ke prioritas tim admin Jawir Garage. Mekanik kami sedang membuka panel chat dan akan segera merespons percakapan Kakak secara langsung di sini.
+
+Mohon ditunggu sebentar ya Kak! \u{1F64F}`,
+      needsAdminAttention: true
+    };
+  }
+  const invoiceMatch = userMessage.match(/JWR-[A-Za-z0-9-]+/i);
+  if (invoiceMatch) {
+    const invNumber = invoiceMatch[0].toUpperCase();
+    try {
+      const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invNumber);
+      if (order) {
+        let statusIndo = "Menunggu Pembayaran";
+        if (order.status === "PAID") statusIndo = "Pembayaran Berhasil / Sedang Diproses Gudang";
+        if (order.status === "SHIPPED") statusIndo = "Pesanan Sedang Dikirim";
+        if (order.status === "COMPLETED") statusIndo = "Pesanan Telah Selesai";
+        if (order.status === "CANCELLED") statusIndo = "Pesanan Dibatalkan";
+        return {
+          reply: `\u{1F4E6} **Status Pesanan #${order.invoice_number}:**
+
+\u2022 Penerima: **${order.customer_name}**
+\u2022 Status: **${statusIndo}** (${order.status})
+\u2022 Kurir: **${order.courier_name}** - ${order.courier_service}
+\u2022 No. Resi: **${order.tracking_number || "Sedang dipacking & menunggu pickup kurir"}**
+\u2022 Total Pembayaran: **${formatIDR(order.grand_total)}**
+
+Kakak bisa melihat rincian lengkapnya di menu **Lacak Pesanan** ya!`
+        };
+      } else {
+        return {
+          reply: `\u26A0\uFE0F Maaf ${userName}, nomor invoice **${invNumber}** tidak ditemukan di sistem kami. Mohon pastikan kode invoice sudah benar (contoh: JWR-2026xxxxxx).`
+        };
+      }
+    } catch (e) {
+    }
+  }
+  if (["pesanan", "order", "resi", "lacak", "paket saya", "status pesanan"].some((k) => msg.includes(k))) {
+    if (context.userId) {
+      try {
+        const latestOrder = db_default.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(context.userId);
+        if (latestOrder) {
+          return {
+            reply: `\u{1F4E6} **Pesanan Terakhir Kakak (${latestOrder.invoice_number}):**
+\u2022 Status: **${latestOrder.status}**
+\u2022 Kurir: ${latestOrder.courier_name} (${latestOrder.courier_service})
+\u2022 No. Resi: **${latestOrder.tracking_number || "Sedang diproses gudang"}**
+\u2022 Total: ${formatIDR(latestOrder.grand_total)}
+
+Apakah pesanan ini yang ingin Kakak tanyakan? Jika pesanan lain, silakan ketik nomor invoicenya ya!`
+          };
+        }
+      } catch (e) {
+      }
+    }
+    return {
+      reply: `\u{1F4E6} **Lacak Pesanan Kamu:**
+Untuk mengecek status pengiriman dan no. resi, silakan ketikkan **Nomor Invoice** pesanan Kakak (contoh: *JWR-123456*), atau buka menu **Pesanan Saya** di pojok kanan atas!`
+    };
+  }
+  const shippingKeywords = ["kirim", "ongkir", "kapan sampai", "ekspedisi", "biteship", "jne", "j&t", "sicepat", "gosend", "grab", "jadwal kirim"];
+  if (shippingKeywords.some((k) => msg.includes(k))) {
+    return {
+      reply: `\u{1F69A} **Informasi Pengiriman & Jadwal Gudang:**
+
+\u2022 **Lokasi Gudang:** Jakarta Timur.
+\u2022 **Jadwal Pickup:** Senin \u2013 Sabtu.
+\u2022 **Same-day Delivery:** Pesanan yang masuk & terverifikasi sebelum **pukul 16.00 WIB** langsung dikirim di hari yang sama!
+\u2022 **Ekspedisi Tersedia:** J&T, JNE, SiCepat, AnterAja, GoSend & Grab (Instant/SameDay).
+\u2022 **Garansi Pengiriman:** Semua part dibungkus bubble wrap ekstra tebal + dus pengaman gratis, aman sampai tujuan!`
+    };
+  }
+  let allProducts = [];
+  try {
+    allProducts = db_default.prepare("SELECT * FROM products WHERE is_active = 1").all();
+  } catch (e) {
+    allProducts = [];
+  }
+  const bikeTerms = [
+    { key: "nmax", label: "Yamaha NMAX (Old/New)" },
+    { key: "aerox", label: "Yamaha Aerox 155" },
+    { key: "vario 160", label: "Honda Vario 160" },
+    { key: "vario 150", label: "Honda Vario 150" },
+    { key: "vario 125", label: "Honda Vario 125" },
+    { key: "vario", label: "Honda Vario Series" },
+    { key: "beat", label: "Honda Beat (Karbu/FI/ESP/Deluxe)" },
+    { key: "scoopy", label: "Honda Scoopy" },
+    { key: "pcx", label: "Honda PCX 150/160" },
+    { key: "mio", label: "Yamaha Mio Series" },
+    { key: "fazzio", label: "Yamaha Fazzio / Grand Filano" },
+    { key: "adv", label: "Honda ADV 150/160" }
+  ];
+  const matchedBike = bikeTerms.find((b) => msg.includes(b.key));
+  const isAskingRecommendation = ["racikan", "saran", "cocok", "rekomen", "bagus", "enak", "upgrade", "gredek", "anti gredek", "tarikan"].some((w) => msg.includes(w));
+  if (matchedBike && (isAskingRecommendation || msg.includes("buat") || msg.includes("untuk"))) {
+    const matchedProducts = allProducts.filter((p) => {
+      const nameLower = (p.name || "").toLowerCase();
+      const compatLower = (p.compatibilityText || "").toLowerCase();
+      const bikeCompat = (p.bikeCompatibility || "").toLowerCase();
+      return nameLower.includes(matchedBike.key) || compatLower.includes(matchedBike.key) || bikeCompat.includes(matchedBike.key);
+    });
+    const bestProduct = matchedProducts.find((p) => p.isPaketUpgrade || p.category === "paket-upgrade") || matchedProducts[0];
+    let advice = `\u{1F3CD}\uFE0F **Rekomendasi Racikan Mekanik Jawir untuk ${matchedBike.label}:**
+
+`;
+    if (matchedBike.key.includes("beat") || matchedBike.key.includes("scoopy")) {
+      advice += `\u2022 **Roller:** 9 - 10 gram (akselerasi responsif, tanjakan enteng)
+\u2022 **Pulley:** Bubut derajat 13.8\xB0 jalur roller dikerok halus
+\u2022 **Per CVT:** 1000 - 1500 RPM + Kampas Ganda Daytona Carbon (bebas gredek 100%!)`;
+    } else if (matchedBike.key.includes("nmax") || matchedBike.key.includes("aerox")) {
+      advice += `\u2022 **Roller:** 11 - 12 gram rata (nafas panjang & akselerasi padat)
+\u2022 **Pulley:** Bubut derajat 13.5\xB0 interlock presisi
+\u2022 **Per CVT:** 1500 RPM + Mangkok Ganda Custom Kartel Spiral`;
+    } else if (matchedBike.key.includes("vario") || matchedBike.key.includes("pcx")) {
+      advice += `\u2022 **Roller:** 11 - 13 gram silang (hilangkan lemot putaran bawah)
+\u2022 **Pulley:** Sudut 13.8\xB0 custom CNC
+\u2022 **Mangkok Ganda:** Anti gredek bolong pembuangan debu`;
+    } else {
+      advice += `\u2022 **Roller:** Turun 1-2 gram dari bobot standar pabrik
+\u2022 **Per CVT:** 1000 - 1500 RPM untuk torsi lebih padat
+\u2022 **Kampas Ganda:** Carbon kevlar anti selip`;
+    }
+    if (bestProduct) {
+      advice += `
+
+Kami punya paket siap pasang Plug & Play yang cocok banget Kak: **${bestProduct.name}** seharga **${formatIDR(bestProduct.price)}** (Stok Ready ${bestProduct.stock} pcs).`;
+      return {
+        reply: advice,
+        productPayload: {
+          id: bestProduct.id,
+          name: bestProduct.name,
+          slug: bestProduct.slug,
+          price: bestProduct.price,
+          originalPrice: bestProduct.originalPrice,
+          discountPercent: bestProduct.discountPercent,
+          image: bestProduct.image,
+          stock: bestProduct.stock,
+          rating: bestProduct.rating || 5,
+          soldCount: bestProduct.soldCount || 0
+        }
+      };
+    }
+    return { reply: advice };
+  }
+  const productKeywords = [
+    "pulley",
+    "roller",
+    "kampas",
+    "mangkok",
+    "per cvt",
+    "v-belt",
+    "vanbelt",
+    "vbelt",
+    "oli",
+    "paket",
+    "knalpot",
+    "busi",
+    "master rem",
+    "kaliper",
+    "selang rem",
+    "filter",
+    "injektor",
+    "ecu",
+    "intercooler",
+    "shock",
+    "nissin",
+    "daytona",
+    "brt",
+    "kawahara",
+    "tdr"
+  ];
+  const searchTerms = productKeywords.filter((k) => msg.includes(k));
+  const isAskingAvailability = ["ready", "ada", "stok", "harga", "berapa", "jual", "punya", "beli", "order"].some((w) => msg.includes(w));
+  if (searchTerms.length > 0 || isAskingAvailability && allProducts.length > 0) {
+    const matches = allProducts.filter((p) => {
+      const pName = (p.name || "").toLowerCase();
+      const pCat = (p.category || "").toLowerCase();
+      const pDesc = (p.description || "").toLowerCase();
+      const pCompat = (p.compatibilityText || "").toLowerCase();
+      if (searchTerms.length > 0) {
+        return searchTerms.some((st) => pName.includes(st) || pCat.includes(st) || pDesc.includes(st));
+      }
+      const words = msg.split(/\s+/).filter((w) => w.length > 3);
+      return words.some((w) => pName.includes(w) || pCompat.includes(w));
+    });
+    if (matches.length > 0) {
+      const topMatch = matches[0];
+      const isReady = (topMatch.stock || 0) > 0;
+      const stockStatus = isReady ? `\u2705 **READY STOK** (${topMatch.stock} pcs tersedia di gudang)` : `\u26A0\uFE0F **STOK HABIS (Pre-Order)**`;
+      let replyText = `Halo ${userName}! Ketersediaan produk di database kami:
+
+`;
+      replyText += `Produk: **${topMatch.name}**
+`;
+      replyText += `\u2022 Status: ${stockStatus}
+`;
+      replyText += `\u2022 Harga: **${formatIDR(topMatch.price)}**`;
+      if (topMatch.discountPercent) {
+        replyText += ` (Hemat ${topMatch.discountPercent}% dari ${formatIDR(topMatch.originalPrice)})`;
+      }
+      replyText += `
+\u2022 Rating: \u2B50 ${topMatch.rating || 5} | Terjual: ${topMatch.soldCount || 0}+ pcs`;
+      replyText += `
+\u2022 Cocok untuk: ${topMatch.compatibilityText || "Berbagai matic"}
+
+`;
+      if (isReady) {
+        replyText += `Barang siap kami kirim hari ini Kak! Klik kartu produk di bawah untuk detail atau langsung masukkan ke keranjang belanja ya! \u{1F680}`;
+      } else {
+        replyText += `Stok sedang dalam perjalanan restock dari pabrik. Kakak mau kami bantu carikan produk alternatif sejenis?`;
+      }
+      return {
+        reply: replyText,
+        productPayload: {
+          id: topMatch.id,
+          name: topMatch.name,
+          slug: topMatch.slug,
+          price: topMatch.price,
+          originalPrice: topMatch.originalPrice,
+          discountPercent: topMatch.discountPercent,
+          image: topMatch.image,
+          stock: topMatch.stock,
+          rating: topMatch.rating || 5,
+          soldCount: topMatch.soldCount || 0
+        }
+      };
+    }
+  }
+  const greetings = ["halo", "hai", "hi", "p", "siang", "malam", "pagi", "sore", "assalamualaikum", "permisi", "test", "tes"];
+  if (greetings.some((g) => msg === g || msg.startsWith(g + " ") || msg.endsWith(" " + g))) {
+    return {
+      reply: `Halo ${userName}! \u{1F44B} Selamat datang di Official Store **Jawir Garage**.
+
+Saya asisten chatbot Jawir \u{1F916} siap membantu Kakak 24/7. Ada yang bisa kami bantu seputar part motor matic hari ini?
+
+Kakak bisa:
+1. \u{1F50D} **Tanya stok & harga** (contoh: *'apakah roller beat ready?'*)
+2. \u{1F3CD}\uFE0F **Konsultasi racikan motor** (contoh: *'racikan kirian nmax'*)
+3. \u{1F4E6} **Cek status order** (ketik nomor invoice *JWR-xxx*)
+4. \u{1F69A} **Jadwal pengiriman & ongkir**
+5. \u{1F468}\u200D\u{1F527} **Bicara langsung dengan mekanik/admin**`
+    };
+  }
+  return {
+    reply: `Terima kasih pesannya Kak ${userName}! \u{1F64F}
+
+Untuk info lebih akurat, Kakak bisa ketikkan nama part yang dicari (misal: *'roller vario 125'*, *'pulley nmax'*, *'paket upgrade beat'*) atau ketik *'hubungi admin'* jika ingin langsung berkonsultasi dengan mekanik kami.
+
+Tim Jawir Garage siap membantu racikan terbaik motor Kakak!`
+  };
+}
+
 // server/index.ts
 dotenv4.config({ path: path5.resolve(process.cwd(), ".env") });
 var JWT_SECRET = process.env.JWT_SECRET || "super-secret-key-for-jawir-garage-ecommerce";
@@ -1686,6 +2188,17 @@ var authMiddleware = (req, res, next) => {
   } catch (err) {
     return res.status(401).json({ error: "Sesi telah kedaluwarsa atau token tidak valid. Silakan login kembali." });
   }
+};
+var optionalAuthMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+    }
+  }
+  next();
 };
 var adminMiddleware = (req, res, next) => {
   if (req.user?.role !== "admin") {
@@ -2016,7 +2529,7 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
   const invoiceNumber = `INV-${dateStr}-${randomSuffix}`;
   const orderId = `ord-${Date.now()}-${randomSuffix}`;
   const expiredAt = new Date(Date.now() + 24 * 60 * 60 * 1e3).toISOString();
-  const getProduct = db_default.prepare("SELECT id, name, price, stock, weight_grams FROM products WHERE id = ?");
+  const getProduct = db_default.prepare("SELECT id, name, price, stock, weight_grams, variation_groups FROM products WHERE id = ?");
   const deductStock = db_default.prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
   const getVoucher = db_default.prepare("SELECT * FROM vouchers WHERE code = ? AND is_active = 1");
   const incrementVoucher = db_default.prepare("UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?");
@@ -2055,7 +2568,37 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
       if (prod.stock < item.quantity) {
         throw new Error(`Stok produk "${prod.name}" tidak mencukupi (Sisa: ${prod.stock}, Permintaan: ${item.quantity}).`);
       }
-      const itemSubtotal = prod.price * item.quantity;
+      let unitPrice = prod.price;
+      if (item.selectedVariant && prod.variation_groups) {
+        try {
+          const varGroups = typeof prod.variation_groups === "string" ? JSON.parse(prod.variation_groups) : prod.variation_groups;
+          if (Array.isArray(varGroups) && varGroups.length > 0) {
+            const selectedVariantsList = item.selectedVariant.split(" \u2022 ").map((s) => s.trim().toLowerCase());
+            for (const group of varGroups) {
+              if (Array.isArray(group.options)) {
+                for (const opt of group.options) {
+                  const optName = (typeof opt === "string" ? opt : opt.name || "").trim().toLowerCase();
+                  if (selectedVariantsList.includes(optName) || optName === item.selectedVariant.trim().toLowerCase()) {
+                    if (typeof opt === "object") {
+                      if (typeof opt.price === "number" && opt.price > 0) {
+                        unitPrice = opt.price;
+                      } else if (typeof opt.priceModifier === "number") {
+                        unitPrice += opt.priceModifier;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Checkout] Failed to parse variation_groups:", e);
+        }
+      }
+      if (item.customPrice && typeof item.customPrice === "number" && item.customPrice > 0) {
+        unitPrice = item.customPrice;
+      }
+      const itemSubtotal = unitPrice * item.quantity;
       calculatedSubtotal += itemSubtotal;
       deductStock.run(item.quantity, prod.id);
       const snapshotName = item.selectedVariant ? `${prod.name} [Variasi: ${item.selectedVariant}]` : prod.name;
@@ -2063,7 +2606,7 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
         id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
         productId: prod.id,
         name: snapshotName,
-        price: prod.price,
+        price: unitPrice,
         quantity: item.quantity,
         subtotal: itemSubtotal
       });
@@ -2865,6 +3408,197 @@ app.patch("/api/admin/vouchers/:id/toggle", authMiddleware, adminMiddleware, (re
   const newStatus = v.is_active === 1 ? 0 : 1;
   db_default.prepare("UPDATE vouchers SET is_active = ? WHERE id = ?").run(newStatus, id);
   res.json({ success: true, is_active: newStatus === 1 });
+});
+app.post("/api/chat/send", optionalAuthMiddleware, async (req, res) => {
+  try {
+    const { message, guestId, guestName, productContext } = req.body;
+    let { roomId } = req.body;
+    if (!message || typeof message !== "string" || message.trim() === "") {
+      return res.status(400).json({ error: "Pesan tidak boleh kosong" });
+    }
+    const trimmedMsg = message.trim();
+    const isAdmin = req.user?.role === "admin";
+    if (!roomId) {
+      if (isAdmin) {
+        return res.status(400).json({ error: "roomId diperlukan untuk pengiriman pesan admin" });
+      } else if (req.user) {
+        roomId = `room_user_${req.user.id}`;
+      } else {
+        const gId = (guestId || "guest_" + Math.random().toString(36).substring(2, 9)).trim();
+        roomId = `room_guest_${gId}`;
+      }
+    }
+    let room = db_default.prepare("SELECT * FROM chat_rooms WHERE id = ?").get(roomId);
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const senderType = isAdmin ? "admin" : "user";
+    const senderName = isAdmin ? "Admin Jawir Garage" : req.user ? req.user.username : guestName || "Pelanggan";
+    if (!room) {
+      const uId = req.user ? req.user.id : guestId || null;
+      const uName = senderName;
+      db_default.prepare(`
+        INSERT INTO chat_rooms (
+          id, user_id, user_name, last_message, last_message_at,
+          unread_admin, unread_user, bot_enabled, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(
+        roomId,
+        uId,
+        uName,
+        trimmedMsg,
+        nowIso,
+        isAdmin ? 0 : 1,
+        isAdmin ? 1 : 0,
+        nowIso
+      );
+      room = { id: roomId, user_id: uId, user_name: uName, bot_enabled: 1 };
+    } else {
+      if (isAdmin) {
+        db_default.prepare(`
+          UPDATE chat_rooms 
+          SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
+          WHERE id = ?
+        `).run(trimmedMsg, nowIso, roomId);
+      } else {
+        db_default.prepare(`
+          UPDATE chat_rooms 
+          SET last_message = ?, last_message_at = ?, unread_admin = unread_admin + 1
+          WHERE id = ?
+        `).run(trimmedMsg, nowIso, roomId);
+      }
+    }
+    const msgId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+    db_default.prepare(`
+      INSERT INTO chat_messages (
+        id, room_id, sender_type, sender_name, message, product_payload, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      msgId,
+      roomId,
+      senderType,
+      senderName,
+      trimmedMsg,
+      productContext ? JSON.stringify(productContext) : null,
+      nowIso
+    );
+    let botReplyMsg = null;
+    const isBotActive = room.bot_enabled !== 0;
+    if (!isAdmin && isBotActive) {
+      const botResponse = generateChatbotReply(trimmedMsg, {
+        userName: senderName,
+        userId: req.user?.id || null,
+        attachedProduct: productContext || null
+      });
+      if (botResponse && botResponse.reply) {
+        const botMsgId = "msg_bot_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+        const botTime = (/* @__PURE__ */ new Date()).toISOString();
+        db_default.prepare(`
+          INSERT INTO chat_messages (
+            id, room_id, sender_type, sender_name, message, product_payload, created_at
+          ) VALUES (?, ?, 'bot', 'Jawir Bot (Asisten Virtual)', ?, ?, ?)
+        `).run(
+          botMsgId,
+          roomId,
+          botResponse.reply,
+          botResponse.productPayload ? JSON.stringify(botResponse.productPayload) : null,
+          botTime
+        );
+        db_default.prepare(`
+          UPDATE chat_rooms 
+          SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
+          WHERE id = ?
+        `).run(botResponse.reply.substring(0, 100), botTime, roomId);
+        botReplyMsg = {
+          id: botMsgId,
+          room_id: roomId,
+          sender_type: "bot",
+          sender_name: "Jawir Bot (Asisten Virtual)",
+          message: botResponse.reply,
+          product_payload: botResponse.productPayload || null,
+          created_at: botTime
+        };
+      }
+    }
+    res.json({
+      success: true,
+      roomId,
+      messageId: msgId,
+      botReply: botReplyMsg
+    });
+  } catch (err) {
+    console.error("[Chat API Error]:", err);
+    res.status(500).json({ error: "Gagal mengirim pesan chat: " + err.message });
+  }
+});
+app.get("/api/chat/messages/:roomId", optionalAuthMiddleware, (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = db_default.prepare("SELECT * FROM chat_rooms WHERE id = ?").get(roomId);
+    const rawMessages = db_default.prepare(
+      "SELECT * FROM chat_messages WHERE room_id = ? ORDER BY created_at ASC"
+    ).all(roomId);
+    const messages = rawMessages.map((m) => {
+      let payload = null;
+      if (m.product_payload) {
+        try {
+          payload = typeof m.product_payload === "string" ? JSON.parse(m.product_payload) : m.product_payload;
+        } catch (e) {
+        }
+      }
+      return {
+        ...m,
+        product_payload: payload
+      };
+    });
+    res.json({
+      room: room || null,
+      messages
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal memuat pesan chat: " + err.message });
+  }
+});
+app.post("/api/chat/rooms/:roomId/read", optionalAuthMiddleware, (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { role } = req.body;
+    if (role === "admin" && req.user?.role === "admin") {
+      db_default.prepare("UPDATE chat_rooms SET unread_admin = 0 WHERE id = ?").run(roomId);
+    } else {
+      db_default.prepare("UPDATE chat_rooms SET unread_user = 0 WHERE id = ?").run(roomId);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/admin/chat/rooms", authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    const rooms = db_default.prepare("SELECT * FROM chat_rooms ORDER BY last_message_at DESC").all();
+    res.json({ rooms });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post("/api/admin/chat/rooms/:roomId/toggle-bot", authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = db_default.prepare("SELECT bot_enabled FROM chat_rooms WHERE id = ?").get(roomId);
+    if (!room) return res.status(404).json({ error: "Chat room tidak ditemukan" });
+    const newBotStatus = room.bot_enabled === 1 ? 0 : 1;
+    db_default.prepare("UPDATE chat_rooms SET bot_enabled = ? WHERE id = ?").run(newBotStatus, roomId);
+    res.json({ success: true, bot_enabled: newBotStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.delete("/api/admin/chat/rooms/:roomId", authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    const { roomId } = req.params;
+    db_default.prepare("DELETE FROM chat_rooms WHERE id = ?").run(roomId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 var distPath = path5.resolve(process.cwd(), "dist");
 if (fs2.existsSync(distPath)) {

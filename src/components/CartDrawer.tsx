@@ -151,7 +151,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   if (!isOpen) return null;
 
   const subtotal = items.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
+    (sum, item) => sum + (item.customPrice ?? item.product.price) * item.quantity,
     0
   );
 
@@ -645,7 +645,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs font-bold text-[#E50914] font-racing">
-                          {formatIDR(item.product.price)}
+                          {formatIDR(item.customPrice ?? item.product.price)}
                         </span>
 
                         <div className="flex items-center gap-2">

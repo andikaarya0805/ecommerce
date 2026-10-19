@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Product, UserBike } from '../types';
-import { ShoppingBag, Star, CheckCircle, Zap, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Star, CheckCircle, Zap, ShieldCheck, Layers } from 'lucide-react';
+import { getProductPriceRange } from '../data/productVariations';
 
 interface ProductCardProps {
   product: Product;
@@ -25,6 +26,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onAddToCart,
   onSelectProduct,
 }) => {
+  const priceRange = useMemo(() => getProductPriceRange(product), [product]);
+
   const isCompatibleWithUser =
     userBike && product.bikeCompatibility?.includes(userBike.type);
 
@@ -130,14 +133,26 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <div className="flex items-baseline gap-1.5 flex-wrap">
             <div className="flex items-baseline text-[#D0011B] font-racing font-black">
               <span className="text-xs mr-0.5">Rp</span>
-              <span className="text-base sm:text-lg tracking-tight">
-                {product.price.toLocaleString('id-ID')}
-              </span>
+              {priceRange.hasRange ? (
+                <span className="text-xs sm:text-sm tracking-tight">
+                  {priceRange.minPrice.toLocaleString('id-ID')} - {priceRange.maxPrice.toLocaleString('id-ID')}
+                </span>
+              ) : (
+                <span className="text-base sm:text-lg tracking-tight">
+                  {product.price.toLocaleString('id-ID')}
+                </span>
+              )}
             </div>
 
-            {product.originalPrice && product.originalPrice > product.price && (
+            {!priceRange.hasRange && product.originalPrice && product.originalPrice > product.price && (
               <span className="text-[10px] text-neutral-500 line-through">
                 Rp {product.originalPrice.toLocaleString('id-ID')}
+              </span>
+            )}
+
+            {priceRange.hasRange && (
+              <span className="text-[9px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/80 px-1 py-0.2 rounded">
+                Opsi Varian
               </span>
             )}
           </div>

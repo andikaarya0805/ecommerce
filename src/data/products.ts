@@ -374,5 +374,81 @@ export const INITIAL_PRODUCTS: any[] = [
     stock: 21,
     originCity: 'Jakarta Timur',
     bikeCompatibility: ['vario-pcx']
+  },
+  {
+    id: 'prod-noken-as-ah1',
+    name: 'Noken As Camshaft BRT AH1 Racing Series - Beat Vario Scoopy PCX NMAX',
+    category: 'mesin',
+    compatibilityText: 'Universal Matic: Beat, Scoopy, Vario 125/150/160, NMAX, Aerox',
+    fitmentTag: 'Plug & Play (PnP)',
+    price: 185000,
+    originalPrice: 260000,
+    discountPercent: 29,
+    promoTag: 'Flash Sale',
+    rating: 4.9,
+    soldCount: 1842,
+    image: '/images/noken_as_ah1.jpg',
+    description: 'Noken As Camshaft BRT AH1 Racing Series dirancang dengan profile lift tinggi untuk meningkatkan nafas mesin putaran atas dan akselerasi responsif. Pilihan paket lengkap dengan per klep racing jepang anti floating.',
+    specs: {
+      'Bahan': 'Billet Hardened Alloy Steel',
+      'Durasi': 'In 245° / Ex 245°',
+      'Lift Klep': '7.8 mm (High Lift)',
+      'Peruntukan': 'Harian Touring & Balap Liar 500m'
+    },
+    isPromo: true,
+    isPaketUpgrade: false,
+    stock: 45,
+    weight_grams: 650,
+    originCity: 'Jakarta Timur',
+    bikeCompatibility: ['vario-pcx', 'nmax-aerox', 'beat-scoopy', 'mio-series'],
+    variationGroups: [
+      {
+        name: 'PILIHAN TIPE / PAKET',
+        options: [
+          { name: 'AH1 - T1', price: 185000, stock: 20 },
+          { name: 'AH1 - T2', price: 185000, stock: 15 },
+          { name: 'AH1 - T3', price: 185000, stock: 10 },
+          { name: 'NOKEN AS + PER KLP', price: 245703, stock: 18 }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'prod-bore-up-ah1',
+    name: 'Blok Seher Silinder Keramik Bore Up Racing AH1 - 54mm 58mm 62mm 66mm',
+    category: 'mesin',
+    compatibilityText: 'Vario 125/150, PCX 150/160, Beat FI, NMAX 155, Aerox',
+    fitmentTag: 'Plug & Play (PnP)',
+    price: 355000,
+    originalPrice: 750000,
+    discountPercent: 53,
+    promoTag: 'Best Seller',
+    rating: 5.0,
+    soldCount: 963,
+    image: '/images/block_silinder_boreup.jpg',
+    description: 'Blok silinder bore up dengan liner keramik nikasil tahan panas dan gesekan tinggi. Piston forging kompresi padat meningkatkan cc mesin dan tenaga hingga +35% tanpa khawatir overheating.',
+    specs: {
+      'Lapisan': 'Ceramic Nikasil Liner',
+      'Piston': 'Forging Dome Racing Piston',
+      'Kelengkapan': 'Blok, Piston, Ring RIK, Pen, Klip, Paking',
+      'Kapasitas': '130cc - 200cc Up'
+    },
+    isPromo: true,
+    isPaketUpgrade: false,
+    stock: 32,
+    weight_grams: 1400,
+    originCity: 'Jakarta Timur',
+    bikeCompatibility: ['vario-pcx', 'nmax-aerox', 'beat-scoopy'],
+    variationGroups: [
+      {
+        name: 'UKURAN BORING / PISTON',
+        options: [
+          { name: '54 mm (Standar)', price: 355000, stock: 10 },
+          { name: '58 mm (150cc Harian)', price: 420000, stock: 12 },
+          { name: '62 mm (180cc Touring)', price: 510000, stock: 6 },
+          { name: '66 mm (200cc Super Race)', price: 665000, stock: 4 }
+        ]
+      }
+    ]
   }
 ];

@@ -543,7 +543,7 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
   const expiredAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   // ZERO-TRUST BACKEND CALCULATION & ATOMIC TRANSACTION
-  const getProduct = db.prepare('SELECT id, name, price, stock, weight_grams FROM products WHERE id = ?');
+  const getProduct = db.prepare('SELECT id, name, price, stock, weight_grams, variation_groups FROM products WHERE id = ?');
   const deductStock = db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?');
   const getVoucher = db.prepare('SELECT * FROM vouchers WHERE code = ? AND is_active = 1');
   const incrementVoucher = db.prepare('UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?');
@@ -591,7 +591,44 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
         throw new Error(`Stok produk "${prod.name}" tidak mencukupi (Sisa: ${prod.stock}, Permintaan: ${item.quantity}).`);
       }
 
-      const itemSubtotal = prod.price * item.quantity;
+      // Calculate unit price considering selected option
+      let unitPrice = prod.price;
+
+      if (item.selectedVariant && prod.variation_groups) {
+        try {
+          const varGroups = typeof prod.variation_groups === 'string'
+            ? JSON.parse(prod.variation_groups)
+            : prod.variation_groups;
+          
+          if (Array.isArray(varGroups) && varGroups.length > 0) {
+            const selectedVariantsList = item.selectedVariant.split(' • ').map((s: string) => s.trim().toLowerCase());
+            for (const group of varGroups) {
+              if (Array.isArray(group.options)) {
+                for (const opt of group.options) {
+                  const optName = (typeof opt === 'string' ? opt : opt.name || '').trim().toLowerCase();
+                  if (selectedVariantsList.includes(optName) || optName === item.selectedVariant.trim().toLowerCase()) {
+                    if (typeof opt === 'object') {
+                      if (typeof opt.price === 'number' && opt.price > 0) {
+                        unitPrice = opt.price;
+                      } else if (typeof opt.priceModifier === 'number') {
+                        unitPrice += opt.priceModifier;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[Checkout] Failed to parse variation_groups:', e);
+        }
+      }
+
+      if (item.customPrice && typeof item.customPrice === 'number' && item.customPrice > 0) {
+        unitPrice = item.customPrice;
+      }
+
+      const itemSubtotal = unitPrice * item.quantity;
       calculatedSubtotal += itemSubtotal;
 
       // Deduct stock immediately in transaction
@@ -605,7 +642,7 @@ app.post('/api/checkout', rateLimiter(10, 60000), authMiddleware, async (req: an
         id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
         productId: prod.id,
         name: snapshotName,
-        price: prod.price,
+        price: unitPrice,
         quantity: item.quantity,
         subtotal: itemSubtotal,
       });

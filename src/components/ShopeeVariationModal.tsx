@@ -3,17 +3,20 @@ import { Product, UserBike } from '../types';
 import {
   getProductVariationGroups,
   getOptionName,
+  getOptionPrice,
   getOptionPriceModifier,
+  getProductPriceRange,
+  calculateSelectedPrice,
 } from '../data/productVariations';
 import { formatIDR } from './ProductCard';
-import { X, Check, ShoppingBag, Zap, AlertCircle } from 'lucide-react';
+import { X, Check, ShoppingBag, Zap, AlertCircle, Minus, Plus } from 'lucide-react';
 
 interface ShopeeVariationModalProps {
   product: Product | null;
   isOpen: boolean;
   onClose: () => void;
-  onAddToCart: (product: Product, quantity: number, selectedVariant: string) => void;
-  onBuyNow?: (product: Product, quantity: number, selectedVariant: string) => void;
+  onAddToCart: (product: Product, quantity: number, selectedVariant: string, customPrice?: number) => void;
+  onBuyNow?: (product: Product, quantity: number, selectedVariant: string, customPrice?: number) => void;
   userBike?: UserBike | null;
 }
 
@@ -35,14 +38,20 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
     return getProductVariationGroups(product);
   }, [product]);
 
-  // Pre-select options on open (e.g. auto-pick garage bike or default 1st option)
+  // Price range helper
+  const priceRange = useMemo(() => {
+    if (!product) return { minPrice: 0, maxPrice: 0, hasRange: false };
+    return getProductPriceRange(product);
+  }, [product]);
+
+  // Initialize or reset selected options on open
   useEffect(() => {
     if (product && isOpen) {
       const initial: { [groupName: string]: string } = {};
       const groups = getProductVariationGroups(product);
 
+      // If user has a bike in garage, match motor group if available
       groups.forEach((group, index) => {
-        // For the first group (Tipe Motor), check if userBike matches any option
         if (index === 0 && userBike) {
           const matchingOpt = group.options.find((opt) => {
             const name = getOptionName(opt).toLowerCase();
@@ -60,39 +69,32 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
 
           if (matchingOpt) {
             initial[group.name] = getOptionName(matchingOpt);
-            return;
           }
         }
-
-        // Auto select first option by default for slick Shopee UX
-        if (group.options.length > 0) {
-          initial[group.name] = getOptionName(group.options[0]);
-        }
       });
+
+      // If there's only 1 group with varying prices (like Shopee video), leave it unselected so the customer sees the range and clicks to choose!
+      if (!priceRange.hasRange && groups.length > 0) {
+        groups.forEach((g) => {
+          if (!initial[g.name] && g.options.length > 0) {
+            initial[g.name] = getOptionName(g.options[0]);
+          }
+        });
+      }
 
       setSelectedOptions(initial);
       setQuantity(1);
       setValidationError(null);
     }
-  }, [product, isOpen, userBike]);
+  }, [product, isOpen, userBike, priceRange.hasRange]);
 
   if (!isOpen || !product) return null;
 
-  // Calculate dynamic price based on modifiers
-  let dynamicPrice = product.price;
-  let dynamicOriginalPrice = product.originalPrice || product.price;
+  // Calculate dynamic price based on selected options
+  const { dynamicPrice, dynamicOriginalPrice } = calculateSelectedPrice(product, selectedOptions);
 
-  variationGroups.forEach((group) => {
-    const selected = selectedOptions[group.name];
-    if (selected) {
-      const opt = group.options.find((o) => getOptionName(o) === selected);
-      if (opt) {
-        const mod = getOptionPriceModifier(opt);
-        dynamicPrice += mod;
-        dynamicOriginalPrice += mod;
-      }
-    }
-  });
+  // Check if any option is selected
+  const hasAnySelection = Object.keys(selectedOptions).length > 0;
 
   // Check if all variation groups are chosen
   const unselectedGroups = variationGroups.filter((g) => !selectedOptions[g.name]);
@@ -102,10 +104,18 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
   const variantString = Object.values(selectedOptions).filter(Boolean).join(' • ');
 
   const handleSelectOption = (groupName: string, optionName: string) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [groupName]: optionName,
-    }));
+    setSelectedOptions((prev) => {
+      if (prev[groupName] === optionName) {
+        // Toggle off if already selected
+        const copy = { ...prev };
+        delete copy[groupName];
+        return copy;
+      }
+      return {
+        ...prev,
+        [groupName]: optionName,
+      };
+    });
     setValidationError(null);
   };
 
@@ -116,13 +126,13 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
     }
 
     if (action === 'cart') {
-      onAddToCart(product, quantity, variantString);
+      onAddToCart(product, quantity, variantString, dynamicPrice);
       onClose();
     } else if (action === 'buy') {
       if (onBuyNow) {
-        onBuyNow(product, quantity, variantString);
+        onBuyNow(product, quantity, variantString, dynamicPrice);
       } else {
-        onAddToCart(product, quantity, variantString);
+        onAddToCart(product, quantity, variantString, dynamicPrice);
       }
       onClose();
     }
@@ -166,15 +176,22 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
             </div>
           </div>
 
-          {/* Product Price & Stock Preview */}
+          {/* Product Price & Stock Preview (Shopee Style Dynamic Switching) */}
           <div className="flex-1 pr-6 flex flex-col justify-between">
             <div>
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-xs text-[#D0011B] font-bold">Rp</span>
-                <span className="font-racing font-black text-xl sm:text-2xl text-[#D0011B]">
-                  {dynamicPrice.toLocaleString('id-ID')}
-                </span>
-                {dynamicOriginalPrice > dynamicPrice && (
+                {priceRange.hasRange && !hasAnySelection ? (
+                  <span className="font-racing font-black text-lg sm:text-xl text-[#D0011B] tracking-tight animate-in fade-in duration-150">
+                    {priceRange.minPrice.toLocaleString('id-ID')} - {priceRange.maxPrice.toLocaleString('id-ID')}
+                  </span>
+                ) : (
+                  <span className="font-racing font-black text-xl sm:text-2xl text-[#D0011B] tracking-tight animate-in zoom-in-95 duration-150">
+                    {dynamicPrice.toLocaleString('id-ID')}
+                  </span>
+                )}
+
+                {hasAnySelection && dynamicOriginalPrice > dynamicPrice && (
                   <span className="text-xs text-neutral-500 line-through">
                     {formatIDR(dynamicOriginalPrice)}
                   </span>
@@ -187,14 +204,14 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
               </div>
             </div>
 
-            <div className="text-[11px] truncate">
+            <div className="text-[11px] truncate mt-1">
               {variantString ? (
                 <span className="text-neutral-400">
                   Pilihan:{' '}
                   <span className="text-neutral-100 font-bold">{variantString}</span>
                 </span>
               ) : (
-                <span className="text-red-400 font-medium">Pilih Variasi Produk</span>
+                <span className="text-amber-400 font-medium">Pilih Variasi Produk di Bawah</span>
               )}
             </div>
           </div>
@@ -228,7 +245,8 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
                 <div className="flex flex-wrap gap-2">
                   {group.options.map((opt) => {
                     const optName = getOptionName(opt);
-                    const optMod = getOptionPriceModifier(opt);
+                    const optPrice = getOptionPrice(opt, product.price);
+                    const optMod = getOptionPriceModifier(opt, product.price);
                     const isSelected = currentSelected === optName;
 
                     return (
@@ -242,13 +260,17 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
                             : 'bg-[#1e1e1e] border border-neutral-700 hover:border-neutral-500 text-neutral-300 font-normal hover:text-white'
                         }`}
                       >
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span>{optName}</span>
-                          {optMod > 0 && (
+                          {typeof opt === 'object' && opt.price && opt.price > 0 ? (
+                            <span className="text-[10px] text-neutral-400 font-normal">
+                              ({formatIDR(opt.price)})
+                            </span>
+                          ) : optMod > 0 ? (
                             <span className="text-[10px] opacity-75">
                               (+{formatIDR(optMod)})
                             </span>
-                          )}
+                          ) : null}
                         </div>
 
                         {/* Signature Shopee Corner Triangle Checkmark */}
@@ -268,63 +290,49 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
           {/* Stepper Quantity Row (Shopee Style) */}
           <div className="pt-3 border-t border-neutral-800 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-neutral-200 block">Jumlah Pembelian</span>
-              <span className="text-[10px] text-neutral-500">Maks. {availableStock} pcs</span>
+              <span className="text-xs text-neutral-300 font-medium block">Jumlah Pembelian</span>
+              <span className="text-[10px] text-neutral-500">Maks. {availableStock} per transaksi</span>
             </div>
 
-            <div className="flex items-center border border-neutral-700 rounded-lg bg-[#181818] overflow-hidden">
+            <div className="flex items-center border border-neutral-700 rounded bg-[#202020] overflow-hidden">
               <button
                 type="button"
-                disabled={quantity <= 1}
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer font-bold text-base transition-colors"
+                className="px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
               >
-                -
+                <Minus className="w-3.5 h-3.5" />
               </button>
-              <input
-                type="number"
-                min={1}
-                max={availableStock}
-                value={quantity}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value) || 1;
-                  setQuantity(Math.min(availableStock, Math.max(1, val)));
-                }}
-                className="w-14 h-10 text-center text-sm font-bold text-white bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border-x border-neutral-700"
-              />
+              <span className="px-3 py-1 text-xs font-bold text-white min-w-[36px] text-center">
+                {quantity}
+              </span>
               <button
                 type="button"
-                disabled={quantity >= availableStock}
                 onClick={() => setQuantity((q) => Math.min(availableStock, q + 1))}
-                className="w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer font-bold text-base transition-colors"
+                className="px-3 py-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
               >
-                +
+                <Plus className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         </div>
 
-        {/* Bottom Sticky Action Buttons (Shopee Style: Dual Buttons) */}
-        <div className="p-3.5 bg-[#181818] border-t border-neutral-800 flex items-center gap-3">
-          {/* Button 1: Masukkan Keranjang */}
+        {/* Footer Actions (Shopee Style Dual Buttons) */}
+        <div className="p-3 border-t border-neutral-800 bg-[#161616] flex gap-2">
           <button
             type="button"
-            id="shopee-modal-add-cart-btn"
             onClick={() => validateAndProceed('cart')}
-            className="flex-1 min-h-[46px] bg-[#D0011B]/15 hover:bg-[#D0011B]/25 active:scale-95 text-[#D0011B] border border-[#D0011B] font-bold text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+            className="flex-1 py-3 px-3 rounded-lg border border-[#D0011B] bg-[#D0011B]/15 hover:bg-[#D0011B]/25 text-[#D0011B] font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <ShoppingBag className="w-4 h-4" />
             <span>Masukkan Keranjang</span>
           </button>
 
-          {/* Button 2: Beli Sekarang */}
           <button
             type="button"
-            id="shopee-modal-buy-now-btn"
             onClick={() => validateAndProceed('buy')}
-            className="flex-1 min-h-[46px] bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white font-extrabold text-sm py-3 px-4 rounded-xl shadow-lg shadow-red-950/50 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="flex-1 py-3 px-3 rounded-lg bg-[#D0011B] hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-red-950/40 transition-colors cursor-pointer"
           >
-            <Zap className="w-4 h-4 fill-current" />
+            <Zap className="w-4 h-4 fill-white" />
             <span>Beli Sekarang</span>
           </button>
         </div>

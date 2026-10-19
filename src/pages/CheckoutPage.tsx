@@ -173,7 +173,7 @@ export const CheckoutPage: React.FC = () => {
   }, [selectedProvince, selectedCity, selectedDistrict, totalWeightGrams, destinations]);
 
   // Subtotal, Discount & Grand Total Calculations
-  const subtotal = items.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const subtotal = items.reduce((s, i) => s + (i.customPrice ?? i.product.price) * i.quantity, 0);
 
   let discountAmount = 0;
   if (appliedVoucher) {
@@ -323,6 +323,7 @@ export const CheckoutPage: React.FC = () => {
           productId: i.product.id,
           quantity: i.quantity,
           selectedVariant: i.selectedVariant,
+          customPrice: i.customPrice ?? i.product.price,
         })),
         voucherCode: appliedVoucher?.code || null,
         customer: {
@@ -664,7 +665,7 @@ export const CheckoutPage: React.FC = () => {
                       Harga Satuan
                     </span>
                     <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                      {formatIDR(item.product.price)}
+                      {formatIDR(item.customPrice ?? item.product.price)}
                     </span>
                   </div>
 
@@ -682,7 +683,7 @@ export const CheckoutPage: React.FC = () => {
                       Subtotal
                     </span>
                     <span className="font-bold text-[#EE4D2D]">
-                      {formatIDR(item.product.price * item.quantity)}
+                      {formatIDR((item.customPrice ?? item.product.price) * item.quantity)}
                     </span>
                   </div>
                 </div>

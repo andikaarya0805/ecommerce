@@ -59,7 +59,7 @@ export const CartPage: React.FC = () => {
 
   // Selected items subtotal
   const selectedItems = items.filter((i) => selectedIds.includes(getItemKey(i)));
-  const selectedSubtotal = selectedItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const selectedSubtotal = selectedItems.reduce((s, i) => s + (i.customPrice ?? i.product.price) * i.quantity, 0);
 
   // Voucher discount
   let voucherDiscount = 0;
@@ -234,9 +234,9 @@ export const CartPage: React.FC = () => {
                       <div className="sm:w-2/12 text-left sm:text-center text-xs">
                         <span className="text-neutral-400 sm:hidden block text-[10px]">Harga:</span>
                         <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                          {formatIDR(item.product.price)}
+                          {formatIDR(item.customPrice ?? item.product.price)}
                         </span>
-                        {item.product.originalPrice > item.product.price && (
+                        {item.product.originalPrice > (item.customPrice ?? item.product.price) && (
                           <span className="text-[10px] text-neutral-400 line-through block">
                             {formatIDR(item.product.originalPrice)}
                           </span>
@@ -269,7 +269,7 @@ export const CartPage: React.FC = () => {
                       <div className="sm:w-2/12 text-left sm:text-right text-xs">
                         <span className="text-neutral-400 sm:hidden block text-[10px]">Subtotal:</span>
                         <span className="font-bold text-[#EE4D2D] text-sm">
-                          {formatIDR(item.product.price * item.quantity)}
+                          {formatIDR((item.customPrice ?? item.product.price) * item.quantity)}
                         </span>
                       </div>
 

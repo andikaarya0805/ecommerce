@@ -12,6 +12,7 @@ export type SortOption = 'populer' | 'terbaru' | 'terlaris' | 'harga-asc' | 'har
 
 export interface ProductVariationOption {
   name: string;
+  price?: number;
   priceModifier?: number;
   stock?: number;
 }
@@ -71,6 +72,7 @@ export interface CartItem {
   product: Product;
   quantity: number;
   selectedVariant?: string;
+  customPrice?: number;
 }
 
 export interface UserBike {

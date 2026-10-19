@@ -42,6 +42,18 @@ import {
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
+import { getProductPriceRange } from '../data/productVariations';
+
+export interface AdminVarOption {
+  name: string;
+  price?: number | '';
+  stock?: number | '';
+}
+
+export interface AdminVarGroup {
+  name: string;
+  options: AdminVarOption[];
+}
 
 const BIKE_OPTIONS = [
   { id: 'vario-pcx', label: 'Vario & PCX' },
@@ -114,7 +126,7 @@ export const AdminPanel: React.FC = () => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [specRows, setSpecRows] = useState<{ key: string; value: string }[]>([]);
-  const [varGroups, setVarGroups] = useState<{ name: string; optionsStr: string }[]>([]);
+  const [varGroups, setVarGroups] = useState<AdminVarGroup[]>([]);
   const [bikeVariantsList, setBikeVariantsList] = useState<string[]>([]);
   const [newBikeVariantInput, setNewBikeVariantInput] = useState<string>('');
 
@@ -464,16 +476,28 @@ export const AdminPanel: React.FC = () => {
     setBikeVariantsList(Array.from(new Set(initialBikes)));
     setNewBikeVariantInput('');
 
-    // For secondary varGroups, exclude motor group to prevent duplicate
-    const groups = (p.variationGroups || [])
-      .filter((g: any) => !g.name.toLowerCase().includes('motor') && !g.name.toLowerCase().includes('tipe motor'))
-      .map((g: any) => ({
-        name: g.name || '',
-        optionsStr: Array.isArray(g.options)
-          ? g.options.map((opt: any) => (typeof opt === 'string' ? opt : opt.name)).join(', ')
-          : '',
-      }));
-    setVarGroups(groups);
+    // Populate varGroups from p.variationGroups retaining custom prices & stock
+    if (Array.isArray(p.variationGroups) && p.variationGroups.length > 0) {
+      setVarGroups(
+        p.variationGroups.map((g: any) => ({
+          name: g.name || '',
+          options: Array.isArray(g.options)
+            ? g.options.map((opt: any) => {
+                if (typeof opt === 'string') {
+                  return { name: opt, price: '', stock: '' };
+                }
+                return {
+                  name: opt.name || '',
+                  price: typeof opt.price === 'number' && opt.price > 0 ? opt.price : (typeof opt.priceModifier === 'number' ? (p.price || 0) + opt.priceModifier : ''),
+                  stock: typeof opt.stock === 'number' ? opt.stock : '',
+                };
+              })
+            : [],
+        }))
+      );
+    } else {
+      setVarGroups([]);
+    }
 
     setIsProductModalOpen(true);
   };
@@ -528,22 +552,36 @@ export const AdminPanel: React.FC = () => {
         }
       }
 
-      const cleanOtherVariationGroups = varGroups
+      const cleanVariationGroups = varGroups
         .filter((g) => g.name.trim() !== '')
         .map((g) => ({
           name: g.name.trim(),
-          options: g.optionsStr.split(',').map((s) => s.trim()).filter(Boolean),
+          options: g.options
+            .filter((opt) => opt.name && opt.name.trim() !== '')
+            .map((opt) => {
+              const pr = opt.price !== '' && opt.price !== undefined && opt.price !== null ? Math.max(0, parseInt(String(opt.price)) || 0) : undefined;
+              const stk = opt.stock !== '' && opt.stock !== undefined && opt.stock !== null ? Math.max(0, parseInt(String(opt.stock)) || 0) : undefined;
+              if (pr !== undefined || stk !== undefined) {
+                return {
+                  name: opt.name.trim(),
+                  ...(pr !== undefined ? { price: pr } : {}),
+                  ...(stk !== undefined ? { stock: stk } : {}),
+                };
+              }
+              return opt.name.trim();
+            }),
         }))
         .filter((g) => g.options.length > 0);
 
       const finalVariationGroups: any[] = [];
-      if (bikeVariantsList.length > 0) {
+      if (cleanVariationGroups.length > 0) {
+        finalVariationGroups.push(...cleanVariationGroups);
+      } else if (bikeVariantsList.length > 0) {
         finalVariationGroups.push({
           name: 'Tipe Motor / Varian',
           options: [...bikeVariantsList],
         });
       }
-      finalVariationGroups.push(...cleanOtherVariationGroups);
 
       const priceNum = Math.max(0, parseInt(editingProduct.price) || 0);
       const origPriceNum = editingProduct.originalPrice ? Math.max(0, parseInt(editingProduct.originalPrice) || 0) : null;
@@ -1185,17 +1223,31 @@ export const AdminPanel: React.FC = () => {
                           <span className="text-[10px] text-neutral-400">{p.originCity || 'Jakarta Timur'}</span>
                         </td>
                         <td className="p-3.5">
-                          <div className="font-racing text-sm text-[#E50914] font-bold">
-                            {formatIDR(p.price)}
-                          </div>
-                          {p.originalPrice && p.originalPrice > p.price && (
-                            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
-                              <span className="line-through">{formatIDR(p.originalPrice)}</span>
-                              <span className="text-[#D0011B] font-bold">
-                                -{p.discountPercent || Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}%
-                              </span>
-                            </div>
-                          )}
+                          {(() => {
+                            const range = getProductPriceRange(p);
+                            return (
+                              <div>
+                                <div className="font-racing text-sm text-[#E50914] font-bold">
+                                  {range.hasRange
+                                    ? `${formatIDR(range.minPrice)} - ${formatIDR(range.maxPrice)}`
+                                    : formatIDR(p.price)}
+                                </div>
+                                {range.hasRange && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/70 border border-amber-800 text-amber-300 font-bold inline-block mt-0.5">
+                                    Multi Harga Varian
+                                  </span>
+                                )}
+                                {p.originalPrice && p.originalPrice > (range.hasRange ? range.maxPrice : p.price) && (
+                                  <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 mt-0.5">
+                                    <span className="line-through">{formatIDR(p.originalPrice)}</span>
+                                    <span className="text-[#D0011B] font-bold">
+                                      -{p.discountPercent || Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}%
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-3.5">
                           <span
@@ -1212,9 +1264,18 @@ export const AdminPanel: React.FC = () => {
                         <td className="p-3.5">
                           {p.variationGroups && p.variationGroups.length > 0 ? (
                             <div className="space-y-1">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 border border-amber-800/80 text-amber-300 block w-fit">
-                                {p.variationGroups.length} Grup Variasi
-                              </span>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 border border-amber-800/80 text-amber-300 block w-fit">
+                                  {p.variationGroups.length} Grup Variasi
+                                </span>
+                                {p.variationGroups.some((g: any) =>
+                                  g.options?.some((opt: any) => typeof opt === 'object' && opt.price)
+                                ) && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-950/80 border border-red-700 text-red-300">
+                                    Rp Custom
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[10px] text-neutral-400 truncate max-w-[150px]">
                                 {p.variationGroups.map((g: any) => `${g.name} (${g.options?.length || 0})`).join(', ')}
                               </div>
@@ -2460,93 +2521,310 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
 
-              {/* SECTION 4: Variasi Produk Shopee */}
+              {/* SECTION 4: Variasi Produk Shopee & Harga Kustom */}
               <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-[#E50914]" />
-                      Variasi Produk (Shopee Variation Matrix)
+                      Variasi Produk & Harga Kustom (Shopee Matrix)
                     </span>
                     <span className="text-[10px] text-neutral-400">
-                      Pembeli dapat memilih variasi ini sebelum menambahkan ke keranjang belanja.
+                      Setiap opsi dapat memiliki harga kustom (Rp) dan stok masing-masing. Harga di toko akan tampil sebagai rentang (contoh: Rp185.000 - Rp245.703) dan otomatis melonjak saat opsi diklik!
                     </span>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => {
-                      setVarGroups([...varGroups, { name: '', optionsStr: '' }]);
+                      setVarGroups([
+                        ...varGroups,
+                        {
+                          name: '',
+                          options: [
+                            { name: '', price: '', stock: '' },
+                            { name: '', price: '', stock: '' },
+                          ],
+                        },
+                      ]);
                     }}
-                    className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-[#E50914] text-white font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                    className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-[#E50914] text-white font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer self-start sm:self-auto flex-shrink-0"
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Tambah Grup</span>
+                    <span>Tambah Grup Variasi</span>
                   </button>
                 </div>
 
+                {/* Quick Presets Bar */}
+                <div className="p-2.5 rounded-lg bg-black/60 border border-neutral-800/80 flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold text-neutral-400 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    Shortcut Preset Cepat:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingProduct({
+                        ...editingProduct,
+                        price: 185000,
+                        originalPrice: 260000,
+                        discountPercent: 29,
+                      });
+                      setVarGroups([
+                        {
+                          name: 'PILIHAN TIPE / PAKET',
+                          options: [
+                            { name: 'AH1 - T1', price: 185000, stock: 20 },
+                            { name: 'AH1 - T2', price: 185000, stock: 15 },
+                            { name: 'AH1 - T3', price: 185000, stock: 10 },
+                            { name: 'NOKEN AS + PER KLP', price: 245703, stock: 18 },
+                          ],
+                        },
+                      ]);
+                    }}
+                    className="text-[10px] px-2 py-1 rounded bg-neutral-850 hover:bg-neutral-750 text-amber-300 border border-amber-800/60 font-semibold cursor-pointer transition-colors"
+                  >
+                    ⚡ Preset Noken As AH1 (Rp185rb - Rp245.703)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingProduct({
+                        ...editingProduct,
+                        price: 355000,
+                        originalPrice: 750000,
+                        discountPercent: 53,
+                      });
+                      setVarGroups([
+                        {
+                          name: 'UKURAN BORING / PISTON',
+                          options: [
+                            { name: '54 mm (Standar)', price: 355000, stock: 10 },
+                            { name: '58 mm (150cc Harian)', price: 420000, stock: 12 },
+                            { name: '62 mm (180cc Touring)', price: 510000, stock: 6 },
+                            { name: '66 mm (200cc Super Race)', price: 665000, stock: 4 },
+                          ],
+                        },
+                      ]);
+                    }}
+                    className="text-[10px] px-2 py-1 rounded bg-neutral-850 hover:bg-neutral-750 text-emerald-300 border border-emerald-800/60 font-semibold cursor-pointer transition-colors"
+                  >
+                    ⚡ Preset Bore Up (Rp355rb - Rp665rb)
+                  </button>
+                  {bikeVariantsList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newGroup: AdminVarGroup = {
+                          name: 'Tipe Motor / Varian',
+                          options: bikeVariantsList.map((bike) => ({
+                            name: bike,
+                            price: '',
+                            stock: '',
+                          })),
+                        };
+                        setVarGroups([...varGroups, newGroup]);
+                      }}
+                      className="text-[10px] px-2 py-1 rounded bg-neutral-850 hover:bg-neutral-750 text-blue-300 border border-blue-800/60 font-semibold cursor-pointer transition-colors"
+                    >
+                      ⚡ Salin dari Varian Motor ({bikeVariantsList.length})
+                    </button>
+                  )}
+                </div>
+
                 {varGroups.length === 0 ? (
-                  <div className="p-3 rounded-lg bg-black/40 border border-neutral-800 text-center text-neutral-500 text-xs">
-                    Belum ada grup variasi. Produk ini berstatus produk tunggal (tanpa variasi).
+                  <div className="p-4 rounded-lg bg-black/40 border border-neutral-800 text-center text-neutral-400 text-xs space-y-1">
+                    <p className="font-semibold text-neutral-300">Belum ada grup variasi kustom untuk produk ini.</p>
+                    <p className="text-[11px] text-neutral-500">
+                      Jika Anda tidak menambahkan grup di sini, sistem akan otomatis menggunakan daftar Varian Motor di Section 2 sebagai pilihan pembeli. Klik salah satu preset atau &quot;Tambah Grup Variasi&quot; untuk memberi harga berbeda di tiap opsi.
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {varGroups.map((g, idx) => {
-                      const optionsArray = g.optionsStr.split(',').map((s) => s.trim()).filter(Boolean);
+                      const groupPrices = g.options
+                        .map((o) => (typeof o.price === 'number' && o.price > 0 ? o.price : (editingProduct.price || 0)))
+                        .filter((pr) => pr > 0);
+                      const minG = groupPrices.length > 0 ? Math.min(...groupPrices) : (editingProduct.price || 0);
+                      const maxG = groupPrices.length > 0 ? Math.max(...groupPrices) : (editingProduct.price || 0);
+                      const hasGroupRange = minG !== maxG;
+
                       return (
-                        <div key={idx} className="p-3 rounded-lg bg-black border border-neutral-800 space-y-2">
+                        <div key={idx} className="p-3.5 rounded-xl bg-black border border-neutral-800 space-y-3 shadow-inner">
+                          {/* Group Header */}
                           <div className="flex items-center justify-between gap-2">
-                            <input
-                              type="text"
-                              placeholder={`Nama Grup #${idx + 1} (Misal: Tipe Motor, Berat Roller, Ukuran)`}
-                              value={g.name}
-                              onChange={(e) => {
-                                const copy = [...varGroups];
-                                copy[idx].name = e.target.value;
-                                setVarGroups(copy);
-                              }}
-                              className="flex-1 px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs font-bold focus:outline-none focus:border-[#E50914]"
-                            />
+                            <div className="flex items-center gap-2 flex-1">
+                              <span className="text-[10px] font-bold px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-300 whitespace-nowrap">
+                                Grup #{idx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                placeholder="Nama Grup (Misal: PILIHAN TIPE / PAKET, UKURAN BORING, WARNA)"
+                                value={g.name}
+                                onChange={(e) => {
+                                  const copy = [...varGroups];
+                                  copy[idx].name = e.target.value;
+                                  setVarGroups(copy);
+                                }}
+                                className="flex-1 px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs font-bold focus:outline-none focus:border-[#E50914]"
+                              />
+                            </div>
                             <button
                               type="button"
                               onClick={() => {
                                 setVarGroups(varGroups.filter((_, i) => i !== idx));
                               }}
-                              className="p-1.5 rounded bg-neutral-800 hover:bg-red-950 text-neutral-400 hover:text-red-400"
-                              title="Hapus Grup Variasi"
+                              className="p-1.5 rounded-lg bg-neutral-900 hover:bg-red-950 text-neutral-400 hover:text-red-400 border border-neutral-800 hover:border-red-800 transition-colors cursor-pointer"
+                              title="Hapus Grup Variasi Ini"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
 
-                          <div>
-                            <label className="block text-[10px] text-neutral-400 mb-1">
-                              Pilihan Opsi (Pisahkan dengan koma):
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="Misal: 9 Gram, 10 Gram, 11 Gram, 12 Gram"
-                              value={g.optionsStr}
-                              onChange={(e) => {
-                                const copy = [...varGroups];
-                                copy[idx].optionsStr = e.target.value;
-                                setVarGroups(copy);
-                              }}
-                              className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914]"
-                            />
+                          {/* Live Detected Price Range Banner */}
+                          {hasGroupRange && (
+                            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-amber-950/40 border border-amber-800/60 text-xs">
+                              <span className="text-amber-300 font-bold flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                                <span>Deteksi Rentang Harga Shopee: {formatIDR(minG)} - {formatIDR(maxG)}</span>
+                              </span>
+                              <span className="text-[10px] text-amber-200/80 hidden sm:inline">
+                                Harga berganti otomatis saat opsi diklik pembeli
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Options Table */}
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-neutral-400 px-1 uppercase tracking-wider">
+                              <span className="col-span-5 sm:col-span-6">Nama Opsi (Pill Shopee)</span>
+                              <span className="col-span-4 sm:col-span-3">Harga Kustom (Rp)</span>
+                              <span className="col-span-2">Stok</span>
+                              <span className="col-span-1 text-right">Aksi</span>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              {g.options.map((opt, optIdx) => (
+                                <div key={optIdx} className="grid grid-cols-12 gap-2 items-center">
+                                  <div className="col-span-5 sm:col-span-6">
+                                    <input
+                                      type="text"
+                                      placeholder="Cth: AH1 - T1, 58 mm, Kanan"
+                                      value={opt.name}
+                                      onChange={(e) => {
+                                        const copy = [...varGroups];
+                                        copy[idx].options[optIdx].name = e.target.value;
+                                        setVarGroups(copy);
+                                      }}
+                                      className="w-full px-2.5 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914]"
+                                    />
+                                  </div>
+                                  <div className="col-span-4 sm:col-span-3">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      placeholder={`Base: ${editingProduct.price || 0}`}
+                                      value={opt.price ?? ''}
+                                      onChange={(e) => {
+                                        const copy = [...varGroups];
+                                        const val = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
+                                        copy[idx].options[optIdx].price = val;
+                                        setVarGroups(copy);
+                                      }}
+                                      className="w-full px-2 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914] font-racing font-bold text-[#D0011B]"
+                                    />
+                                  </div>
+                                  <div className="col-span-2">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      placeholder={`${editingProduct.stock || 0}`}
+                                      value={opt.stock ?? ''}
+                                      onChange={(e) => {
+                                        const copy = [...varGroups];
+                                        const val = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
+                                        copy[idx].options[optIdx].stock = val;
+                                        setVarGroups(copy);
+                                      }}
+                                      className="w-full px-2 py-1.5 rounded bg-neutral-900 border border-neutral-700 text-white text-xs focus:outline-none focus:border-[#E50914]"
+                                    />
+                                  </div>
+                                  <div className="col-span-1 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const copy = [...varGroups];
+                                        copy[idx].options = copy[idx].options.filter((_, i) => i !== optIdx);
+                                        setVarGroups(copy);
+                                      }}
+                                      className="p-1 rounded bg-neutral-900 hover:bg-red-950 text-neutral-400 hover:text-red-400 cursor-pointer"
+                                      title="Hapus Opsi Ini"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const copy = [...varGroups];
+                                  copy[idx].options.push({ name: '', price: '', stock: '' });
+                                  setVarGroups(copy);
+                                }}
+                                className="px-2.5 py-1 rounded bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-200 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3 text-[#E50914]" />
+                                <span>Tambah Baris Opsi</span>
+                              </button>
+
+                              {minG > 0 && minG !== editingProduct.price && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingProduct({
+                                      ...editingProduct,
+                                      price: minG,
+                                    });
+                                  }}
+                                  className="text-[10px] text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                                >
+                                  Jadikan {formatIDR(minG)} sebagai Harga Dasar Produk
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          {optionsArray.length > 0 && (
-                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                              <span className="text-[10px] text-neutral-500">Preview Pills:</span>
-                              {optionsArray.map((opt, i) => (
-                                <span
-                                  key={i}
-                                  className="text-[10px] px-2 py-0.5 rounded bg-red-950/60 border border-red-800 text-red-300 font-medium"
-                                >
-                                  {opt}
-                                </span>
-                              ))}
+                          {/* Preview Pills */}
+                          {g.options.filter((o) => o.name && o.name.trim()).length > 0 && (
+                            <div className="pt-2 border-t border-neutral-850">
+                              <span className="text-[10px] text-neutral-400 block mb-1">
+                                Tampilan Tombol Varian di Halaman Pembeli:
+                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {g.options
+                                  .filter((o) => o.name && o.name.trim())
+                                  .map((opt, i) => {
+                                    const optPrice =
+                                      typeof opt.price === 'number' && opt.price > 0
+                                        ? opt.price
+                                        : editingProduct.price;
+                                    return (
+                                      <span
+                                        key={i}
+                                        className="text-[10px] px-2.5 py-1 rounded-md bg-red-950/40 border border-red-800 text-red-200 font-medium flex items-center gap-1.5"
+                                      >
+                                        <span>{opt.name}</span>
+                                        <span className="text-amber-300 font-bold font-racing">
+                                          ({formatIDR(optPrice)})
+                                        </span>
+                                      </span>
+                                    );
+                                  })}
+                              </div>
                             </div>
                           )}
                         </div>

@@ -571,8 +571,12 @@ export function seedDatabase(targetDb: any = db) {
       INSERT OR IGNORE INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
         discountPercent, promoTag, rating, soldCount, image, description, specs,
-        isPromo, isPaketUpgrade, stock, weight_grams, originCity, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, bike_variants, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `);
+
+    const updateProductVarGroups = targetDb.prepare(`
+      UPDATE products SET variation_groups = ?, bike_variants = ? WHERE id = ?
     `);
 
     const insertCompatibility = targetDb.prepare(`
@@ -606,8 +610,18 @@ export function seedDatabase(targetDb: any = db) {
         p.isPaketUpgrade ? 1 : 0,
         p.stock,
         p.weight_grams || 500,
-        p.originCity
+        p.originCity,
+        p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+        p.bikeVariants ? JSON.stringify(p.bikeVariants) : null
       );
+
+      if (p.variationGroups || p.bikeVariants) {
+        updateProductVarGroups.run(
+          p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+          p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
+          p.id
+        );
+      }
 
       if (p.bikeCompatibility) {
         for (const bike of p.bikeCompatibility) {
@@ -870,11 +884,8 @@ export function initDb() {
       );
     }
 
-    const prodCount = db.prepare('SELECT COUNT(*) as count FROM products').get() as any;
-    if (!prodCount || prodCount.count === 0) {
-      console.log('[DB] Fresh database detected. Running auto-seed...');
-      seedDatabase(db);
-    }
+    // Ensure seed products and variants are seeded or updated
+    seedDatabase(db);
   } catch (initErr) {
     console.warn('[DB] initDb warning:', initErr);
   }

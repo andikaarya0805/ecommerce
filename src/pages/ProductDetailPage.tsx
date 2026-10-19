@@ -26,7 +26,10 @@ import { INITIAL_PRODUCTS } from '../data/products';
 import {
   getProductVariationGroups,
   getOptionName,
+  getOptionPrice,
   getOptionPriceModifier,
+  getProductPriceRange,
+  calculateSelectedPrice,
 } from '../data/productVariations';
 import { formatIDR } from '../components/ProductCard';
 import { safeFetchJson } from '../config/api';
@@ -197,6 +200,12 @@ export const ProductDetailPage: React.FC = () => {
     return getProductVariationGroups(product);
   }, [product]);
 
+  // Price range helper
+  const priceRange = useMemo(() => {
+    if (!product) return { minPrice: 0, maxPrice: 0, hasRange: false };
+    return getProductPriceRange(product);
+  }, [product]);
+
   // Gallery images list (Generate 4 mock variant shots if only 1 image provided)
   const galleryImages = useMemo(() => {
     if (!product) return [];
@@ -233,80 +242,73 @@ export const ProductDetailPage: React.FC = () => {
           });
           if (matchingOpt) {
             initial[group.name] = getOptionName(matchingOpt);
-            return;
           }
         }
-        if (group.options.length > 0) {
-          initial[group.name] = getOptionName(group.options[0]);
-        }
       });
+
+      // If product does NOT have varying price range, preselect 1st option
+      if (!priceRange.hasRange && groups.length > 0) {
+        groups.forEach((g) => {
+          if (!initial[g.name] && g.options.length > 0) {
+            initial[g.name] = getOptionName(g.options[0]);
+          }
+        });
+      }
 
       setSelectedOptions(initial);
       setQuantity(1);
       setValidationError(null);
       setSelectedImageIndex(0);
     }
-  }, [product, userBike]);
-
-  if (loading || !product) {
-    return (
-      <div className="min-h-screen bg-[#0f0f0f] text-slate-100 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-[#D0011B] border-t-transparent rounded-full animate-spin" />
-          <p className="text-neutral-400 text-sm font-semibold">Memuat Produk...</p>
-        </div>
-      </div>
-    );
-  }
+  }, [product, userBike, priceRange.hasRange]);
 
   // Calculate pricing based on chosen options
-  let dynamicPrice = product.price;
-  let dynamicOriginalPrice = product.originalPrice || product.price;
+  const { dynamicPrice, dynamicOriginalPrice } = useMemo(() => {
+    if (!product) return { dynamicPrice: 0, dynamicOriginalPrice: 0 };
+    return calculateSelectedPrice(product, selectedOptions);
+  }, [product, selectedOptions]);
 
-  variationGroups.forEach((group) => {
-    const selected = selectedOptions[group.name];
-    if (selected) {
-      const opt = group.options.find((o) => getOptionName(o) === selected);
-      if (opt) {
-        const mod = getOptionPriceModifier(opt);
-        dynamicPrice += mod;
-        dynamicOriginalPrice += mod;
-      }
-    }
-  });
-
-  // Calculate price range across all options for Shopee header display
-  let minOptionPrice = product.price;
-  let maxOptionPrice = product.price;
-  variationGroups.forEach((g) => {
-    g.options.forEach((o) => {
-      const m = getOptionPriceModifier(o);
-      const pr = product.price + m;
-      if (pr < minOptionPrice) minOptionPrice = pr;
-      if (pr > maxOptionPrice) maxOptionPrice = pr;
-    });
-  });
+  const hasAnySelection = Object.keys(selectedOptions).length > 0;
+  const unselectedGroups = useMemo(() => {
+    return variationGroups.filter((g) => !selectedOptions[g.name]);
+  }, [variationGroups, selectedOptions]);
+  const isAllSelected = unselectedGroups.length === 0;
 
   const variantString = Object.values(selectedOptions).filter(Boolean).join(' • ');
 
   const handleSelectOption = (groupName: string, optionName: string) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [groupName]: optionName,
-    }));
+    setSelectedOptions((prev) => {
+      if (prev[groupName] === optionName) {
+        const copy = { ...prev };
+        delete copy[groupName];
+        return copy;
+      }
+      return {
+        ...prev,
+        [groupName]: optionName,
+      };
+    });
     setValidationError(null);
   };
 
   const handleAddToCartClick = () => {
-    addToCart(product, quantity, variantString || undefined);
+    if (variationGroups.length > 0 && !isAllSelected) {
+      setValidationError(`Silakan pilih variasi: ${unselectedGroups.map((g) => g.name).join(', ')}`);
+      return;
+    }
+    addToCart(product!, quantity, variantString || undefined, dynamicPrice);
     addToast(
       'Berhasil Ditambahkan ke Keranjang! 🛒',
-      `${product.name.slice(0, 30)}... (${quantity}x)`
+      `${product!.name.slice(0, 30)}... (${quantity}x)`
     );
   };
 
   const handleBuyNowClick = () => {
-    addToCart(product, quantity, variantString || undefined);
+    if (variationGroups.length > 0 && !isAllSelected) {
+      setValidationError(`Silakan pilih variasi: ${unselectedGroups.map((g) => g.name).join(', ')}`);
+      return;
+    }
+    addToCart(product!, quantity, variantString || undefined, dynamicPrice);
     navigate('/checkout');
   };
 
@@ -515,15 +517,17 @@ export const ProductDetailPage: React.FC = () => {
               <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-[#221010] via-[#1a1212] to-neutral-900 border border-red-950/70 flex flex-col gap-1">
                 <div className="flex items-baseline gap-3 flex-wrap">
                   {/* Strikethrough Original Price */}
-                  {dynamicOriginalPrice > dynamicPrice && (
+                  {hasAnySelection && dynamicOriginalPrice > dynamicPrice && (
                     <span className="text-sm text-neutral-500 line-through">
                       {formatIDR(dynamicOriginalPrice)}
                     </span>
                   )}
 
                   {/* Main Red Big Price */}
-                  <span className="font-racing font-black text-2xl sm:text-3xl text-[#D0011B] tracking-tight">
-                    {formatIDR(dynamicPrice)}
+                  <span className="font-racing font-black text-2xl sm:text-3xl text-[#D0011B] tracking-tight animate-in zoom-in-95 duration-150">
+                    {priceRange.hasRange && !hasAnySelection
+                      ? `Rp${priceRange.minPrice.toLocaleString('id-ID')} - Rp${priceRange.maxPrice.toLocaleString('id-ID')}`
+                      : formatIDR(dynamicPrice)}
                   </span>
 
                   {/* Discount percentage badge */}
@@ -534,9 +538,13 @@ export const ProductDetailPage: React.FC = () => {
                   )}
                 </div>
 
-                {minOptionPrice !== maxOptionPrice && (
-                  <p className="text-[11px] text-neutral-400">
-                    Rentang Harga Varian: <span className="text-neutral-200 font-semibold">{formatIDR(minOptionPrice)} - {formatIDR(maxOptionPrice)}</span>
+                {priceRange.hasRange && (
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    {hasAnySelection ? (
+                      <span>Varian Aktif: <strong className="text-white">{variantString}</strong></span>
+                    ) : (
+                      <span>Rentang Harga Varian: <span className="text-neutral-200 font-semibold">{formatIDR(priceRange.minPrice)} - {formatIDR(priceRange.maxPrice)}</span> (Pilih salah satu variasi di bawah)</span>
+                    )}
                   </p>
                 )}
               </div>
@@ -608,7 +616,8 @@ export const ProductDetailPage: React.FC = () => {
                       <div className="flex flex-wrap gap-2 flex-1">
                         {group.options.map((opt) => {
                           const optName = getOptionName(opt);
-                          const optMod = getOptionPriceModifier(opt);
+                          const optPrice = getOptionPrice(opt, product.price);
+                          const optMod = getOptionPriceModifier(opt, product.price);
                           const isSelected = currentSelected === optName;
 
                           return (
@@ -622,13 +631,17 @@ export const ProductDetailPage: React.FC = () => {
                                   : 'bg-[#202020] border border-neutral-700 hover:border-neutral-500 text-neutral-300'
                               }`}
                             >
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span>{optName}</span>
-                                {optMod > 0 && (
+                                {typeof opt === 'object' && opt.price && opt.price > 0 ? (
+                                  <span className="text-[10px] text-neutral-400 font-normal">
+                                    ({formatIDR(opt.price)})
+                                  </span>
+                                ) : optMod > 0 ? (
                                   <span className="text-[10px] text-neutral-400 font-normal">
                                     (+{formatIDR(optMod)})
                                   </span>
-                                )}
+                                ) : null}
                               </div>
 
                               {/* Shopee Checkmark Corner Ribbon */}
