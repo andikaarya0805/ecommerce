@@ -3,8 +3,6 @@ import { Product, UserBike } from '../types';
 import {
   getProductVariationGroups,
   getOptionName,
-  getOptionPrice,
-  getOptionPriceModifier,
   getProductPriceRange,
   calculateSelectedPrice,
 } from '../data/productVariations';
@@ -245,8 +243,6 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
                 <div className="flex flex-wrap gap-2">
                   {group.options.map((opt) => {
                     const optName = getOptionName(opt);
-                    const optPrice = getOptionPrice(opt, product.price);
-                    const optMod = getOptionPriceModifier(opt, product.price);
                     const isSelected = currentSelected === optName;
 
                     return (
@@ -260,18 +256,7 @@ export const ShopeeVariationModal: React.FC<ShopeeVariationModalProps> = ({
                             : 'bg-[#1e1e1e] border border-neutral-700 hover:border-neutral-500 text-neutral-300 font-normal hover:text-white'
                         }`}
                       >
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{optName}</span>
-                          {typeof opt === 'object' && opt.price && opt.price > 0 ? (
-                            <span className="text-[10px] text-neutral-400 font-normal">
-                              ({formatIDR(opt.price)})
-                            </span>
-                          ) : optMod > 0 ? (
-                            <span className="text-[10px] opacity-75">
-                              (+{formatIDR(optMod)})
-                            </span>
-                          ) : null}
-                        </div>
+                        <span>{optName}</span>
 
                         {/* Signature Shopee Corner Triangle Checkmark */}
                         {isSelected && (

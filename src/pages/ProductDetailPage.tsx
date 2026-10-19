@@ -26,8 +26,6 @@ import { INITIAL_PRODUCTS } from '../data/products';
 import {
   getProductVariationGroups,
   getOptionName,
-  getOptionPrice,
-  getOptionPriceModifier,
   getProductPriceRange,
   calculateSelectedPrice,
 } from '../data/productVariations';
@@ -320,12 +318,63 @@ export const ProductDetailPage: React.FC = () => {
   };
 
   const toggleFavorite = () => {
+    if (!product) return;
     setIsFavorite((prev) => !prev);
     addToast(
       !isFavorite ? 'Disimpan ke Favorit ❤️' : 'Dihapus dari Favorit',
       product.name
     );
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#141414] text-slate-100 flex flex-col selection:bg-[#D0011B] selection:text-white">
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        <AnnouncementBar />
+        <Header
+          searchQuery=""
+          onSearchChange={() => {}}
+          cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
+          onOpenCart={() => setIsCartOpen(true)}
+          selectedBike={userBike}
+          onOpenGarage={() => setIsGarageModalOpen(true)}
+        />
+        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[50vh]">
+          <div className="w-12 h-12 border-4 border-[#D0011B] border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-neutral-400 text-sm font-medium">Memuat detail part racing Jawir Garage...</p>
+        </div>
+        <FooterTrustBadges />
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-[#141414] text-slate-100 flex flex-col selection:bg-[#D0011B] selection:text-white">
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        <AnnouncementBar />
+        <Header
+          searchQuery=""
+          onSearchChange={() => {}}
+          cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
+          onOpenCart={() => setIsCartOpen(true)}
+          selectedBike={userBike}
+          onOpenGarage={() => setIsGarageModalOpen(true)}
+        />
+        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[50vh] space-y-4">
+          <p className="text-xl font-bold text-white">Produk Tidak Ditemukan</p>
+          <p className="text-neutral-400 text-sm">Part racing yang Anda cari mungkin sudah habis atau dipindahkan.</p>
+          <Link
+            to="/"
+            className="px-4 py-2 bg-[#D0011B] hover:bg-red-700 text-white font-bold rounded-lg transition-colors inline-block"
+          >
+            Kembali ke Beranda
+          </Link>
+        </div>
+        <FooterTrustBadges />
+      </div>
+    );
+  }
 
   // Filter reviews
   const filteredReviews = MOCK_REVIEWS.filter((rev) => {
@@ -616,8 +665,6 @@ export const ProductDetailPage: React.FC = () => {
                       <div className="flex flex-wrap gap-2 flex-1">
                         {group.options.map((opt) => {
                           const optName = getOptionName(opt);
-                          const optPrice = getOptionPrice(opt, product.price);
-                          const optMod = getOptionPriceModifier(opt, product.price);
                           const isSelected = currentSelected === optName;
 
                           return (
@@ -631,18 +678,7 @@ export const ProductDetailPage: React.FC = () => {
                                   : 'bg-[#202020] border border-neutral-700 hover:border-neutral-500 text-neutral-300'
                               }`}
                             >
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span>{optName}</span>
-                                {typeof opt === 'object' && opt.price && opt.price > 0 ? (
-                                  <span className="text-[10px] text-neutral-400 font-normal">
-                                    ({formatIDR(opt.price)})
-                                  </span>
-                                ) : optMod > 0 ? (
-                                  <span className="text-[10px] text-neutral-400 font-normal">
-                                    (+{formatIDR(optMod)})
-                                  </span>
-                                ) : null}
-                              </div>
+                              <span>{optName}</span>
 
                               {/* Shopee Checkmark Corner Ribbon */}
                               {isSelected && (

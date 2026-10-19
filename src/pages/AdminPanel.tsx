@@ -2807,23 +2807,14 @@ export const AdminPanel: React.FC = () => {
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {g.options
                                   .filter((o) => o.name && o.name.trim())
-                                  .map((opt, i) => {
-                                    const optPrice =
-                                      typeof opt.price === 'number' && opt.price > 0
-                                        ? opt.price
-                                        : editingProduct.price;
-                                    return (
-                                      <span
-                                        key={i}
-                                        className="text-[10px] px-2.5 py-1 rounded-md bg-red-950/40 border border-red-800 text-red-200 font-medium flex items-center gap-1.5"
-                                      >
-                                        <span>{opt.name}</span>
-                                        <span className="text-amber-300 font-bold font-racing">
-                                          ({formatIDR(optPrice)})
-                                        </span>
-                                      </span>
-                                    );
-                                  })}
+                                  .map((opt, i) => (
+                                    <span
+                                      key={i}
+                                      className="text-[10px] px-2.5 py-1 rounded-md bg-neutral-900 border border-neutral-700 text-neutral-200 font-medium"
+                                    >
+                                      <span>{opt.name}</span>
+                                    </span>
+                                  ))}
                               </div>
                             </div>
                           )}
