@@ -1645,7 +1645,7 @@ app.patch('/api/admin/vouchers/:id/toggle', authMiddleware, adminMiddleware, (re
 
 app.post('/api/chat/send', optionalAuthMiddleware, async (req: any, res: any) => {
   try {
-    const { message, guestId, guestName, productContext } = req.body;
+    const { message, guestId, guestName, productContext, isAdminReply, senderRole } = req.body;
     let { roomId } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim() === '') {
@@ -1653,11 +1653,14 @@ app.post('/api/chat/send', optionalAuthMiddleware, async (req: any, res: any) =>
     }
 
     const trimmedMsg = message.trim();
-    const isAdmin = req.user?.role === 'admin';
+    // Only treat as admin reply if user has admin role AND the message is explicitly sent from Admin Panel
+    const isOfficialAdminReply = Boolean(
+      req.user?.role === 'admin' && (isAdminReply === true || senderRole === 'admin')
+    );
 
     // Identify user and room
     if (!roomId) {
-      if (isAdmin) {
+      if (isOfficialAdminReply) {
         return res.status(400).json({ error: 'roomId diperlukan untuk pengiriman pesan admin' });
       } else if (req.user) {
         roomId = `room_user_${req.user.id}`;
@@ -1671,14 +1674,14 @@ app.post('/api/chat/send', optionalAuthMiddleware, async (req: any, res: any) =>
     let room = db.prepare('SELECT * FROM chat_rooms WHERE id = ?').get(roomId) as any;
     const nowIso = new Date().toISOString();
 
-    const senderType = isAdmin ? 'admin' : 'user';
-    const senderName = isAdmin
+    const senderType = isOfficialAdminReply ? 'admin' : 'user';
+    const senderName = isOfficialAdminReply
       ? 'Admin Jawir Garage'
       : (req.user ? req.user.username : (guestName || 'Pelanggan'));
 
     if (!room) {
       const uId = req.user ? req.user.id : (guestId || null);
-      const uName = senderName;
+      const uName = isOfficialAdminReply ? (guestName || 'Pelanggan') : senderName;
       db.prepare(`
         INSERT INTO chat_rooms (
           id, user_id, user_name, last_message, last_message_at,
@@ -1690,13 +1693,13 @@ app.post('/api/chat/send', optionalAuthMiddleware, async (req: any, res: any) =>
         uName,
         trimmedMsg,
         nowIso,
-        isAdmin ? 0 : 1,
-        isAdmin ? 1 : 0,
+        isOfficialAdminReply ? 0 : 1,
+        isOfficialAdminReply ? 1 : 0,
         nowIso
       );
       room = { id: roomId, user_id: uId, user_name: uName, bot_enabled: 1 };
     } else {
-      if (isAdmin) {
+      if (isOfficialAdminReply) {
         db.prepare(`
           UPDATE chat_rooms 
           SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
@@ -1731,7 +1734,7 @@ app.post('/api/chat/send', optionalAuthMiddleware, async (req: any, res: any) =>
     let botReplyMsg: any = null;
     const isBotActive = room.bot_enabled !== 0;
 
-    if (!isAdmin && isBotActive) {
+    if (!isOfficialAdminReply && isBotActive) {
       const botResponse = generateChatbotReply(trimmedMsg, {
         userName: senderName,
         userId: req.user?.id || null,

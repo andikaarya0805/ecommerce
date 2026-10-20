@@ -333,6 +333,7 @@ export const AdminPanel: React.FC = () => {
         body: JSON.stringify({
           roomId: selectedChatRoomId,
           message: text,
+          isAdminReply: true,
         }),
       });
       fetchRoomMessages(selectedChatRoomId);

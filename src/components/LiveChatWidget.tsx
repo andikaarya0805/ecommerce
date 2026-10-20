@@ -176,9 +176,8 @@ export const LiveChatWidget: React.FC = () => {
 
       if (res && res.botReply) {
         setMessages((prev) => [...prev, res.botReply!]);
-      } else {
-        await fetchMessages();
       }
+      await fetchMessages();
     } catch (err: any) {
       console.error('Error sending chat:', err);
     } finally {
