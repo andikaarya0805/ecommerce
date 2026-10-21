@@ -2536,6 +2536,11 @@ app.use((req, res, next) => {
   } else if (!req.url.startsWith("/api") && !req.url.startsWith("/static")) {
     req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
   }
+  if (req.url.startsWith("/api")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
   next();
 });
 app.get(["/api", "/api/health", "/api/db-status"], async (req, res) => {

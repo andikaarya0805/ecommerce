@@ -87,18 +87,32 @@ function StoreFront() {
     }
   };
 
-  // Auto-sync products catalog in storefront (smooth 15s interval, no wasteful re-render)
+  // Auto-sync products catalog in storefront (instant on focus/tab switch, plus smooth 8s interval)
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(async () => {
-      try {
-        const resProd = await safeFetchJson<Product[]>('/api/products');
-        if (Array.isArray(resProd) && resProd.length > 0) {
-          setProducts((prev) => (JSON.stringify(prev) === JSON.stringify(resProd) ? prev : resProd));
-        }
-      } catch (e) {}
-    }, 15000);
-    return () => clearInterval(interval);
+
+    const handleSync = () => {
+      safeFetchJson<Product[]>('/api/products')
+        .then((resProd) => {
+          if (Array.isArray(resProd) && resProd.length > 0) {
+            setProducts((prev) => (JSON.stringify(prev) === JSON.stringify(resProd) ? prev : resProd));
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('focus', handleSync);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleSync();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const interval = setInterval(handleSync, 8000);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
 

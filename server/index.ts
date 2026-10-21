@@ -56,6 +56,14 @@ app.use((req: any, res: any, next: NextFunction) => {
   } else if (!req.url.startsWith('/api') && !req.url.startsWith('/static')) {
     req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
   }
+
+  // Prevent stale cache on API routes (guarantees instant sync between dev & deployment)
+  if (req.url.startsWith('/api')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+
   next();
 });
 
