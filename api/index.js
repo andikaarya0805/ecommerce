@@ -1429,6 +1429,12 @@ async function checkSupabaseHealth() {
 }
 function mapSupabaseProduct(p) {
   if (!p) return null;
+  const rawSpecs = typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs || {};
+  const variationGroups = p.variation_groups ? typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups) : p.variation_groups : rawSpecs._variationGroups || void 0;
+  const bikeVariants = p.bike_variants ? typeof p.bike_variants === "string" ? JSON.parse(p.bike_variants) : p.bike_variants : rawSpecs._bikeVariants || void 0;
+  const specs = { ...rawSpecs };
+  delete specs._variationGroups;
+  delete specs._bikeVariants;
   return {
     id: p.id,
     name: p.name,
@@ -1444,7 +1450,7 @@ function mapSupabaseProduct(p) {
     soldCount: Number(p.sold_count || p.soldCount || 0),
     image: p.image,
     description: p.description,
-    specs: typeof p.specs === "string" ? JSON.parse(p.specs || "{}") : p.specs || {},
+    specs,
     isPromo: Boolean(p.is_promo ?? p.isPromo),
     isPaketUpgrade: Boolean(p.is_paket_upgrade ?? p.isPaketUpgrade),
     stock: Number(p.stock || 0),
@@ -1452,10 +1458,403 @@ function mapSupabaseProduct(p) {
     originCity: p.origin_city || p.originCity || "Jakarta Timur",
     isActive: Boolean(p.is_active ?? p.isActive ?? true),
     created_at: p.created_at,
-    variationGroups: p.variation_groups ? typeof p.variation_groups === "string" ? JSON.parse(p.variation_groups) : p.variation_groups : void 0,
-    bikeVariants: p.bike_variants ? typeof p.bike_variants === "string" ? JSON.parse(p.bike_variants) : p.bike_variants : void 0,
+    variationGroups,
+    bikeVariants,
     bikeCompatibility: p.bikeCompatibility || []
   };
+}
+function mapSupabaseVoucher(v) {
+  if (!v) return null;
+  return {
+    id: v.id,
+    code: v.code,
+    title: v.title,
+    subtitle: v.subtitle,
+    discount_type: v.discount_type || "FIXED",
+    discount_value: Number(v.discount_value || 0),
+    minSpend: Number(v.min_purchase_amount ?? v.minSpend ?? 0),
+    max_discount_amount: v.max_discount_amount != null ? Number(v.max_discount_amount) : void 0,
+    discountAmount: Number(v.discount_value || 0),
+    quota: Number(v.quota || 100),
+    used_count: Number(v.used_count || 0),
+    expiryText: v.valid_until ? `Berlaku hingga ${new Date(v.valid_until).toLocaleDateString("id-ID")}` : "Promo Aktif",
+    badge: v.badge || "Promo Jawir",
+    claimed: Boolean(v.claimed),
+    is_active: v.is_active ? 1 : 0
+  };
+}
+async function getSupabaseAdminProducts() {
+  if (!client) return null;
+  try {
+    const { data: prods, error: pErr } = await client.from("products").select("*").order("created_at", { ascending: false });
+    if (pErr) {
+      console.warn("[Supabase] getSupabaseAdminProducts error:", pErr);
+      return null;
+    }
+    const { data: compats } = await client.from("product_bike_compatibility").select("*");
+    const compatMap = /* @__PURE__ */ new Map();
+    if (compats) {
+      for (const c of compats) {
+        const arr = compatMap.get(c.product_id) || [];
+        arr.push(c.bike_type);
+        compatMap.set(c.product_id, arr);
+      }
+    }
+    return (prods || []).map((p) => {
+      const mapped = mapSupabaseProduct(p);
+      mapped.bikeCompatibility = compatMap.get(p.id) || [];
+      return mapped;
+    });
+  } catch (err) {
+    console.warn("[Supabase] getSupabaseAdminProducts exception:", err);
+    return null;
+  }
+}
+async function getSupabaseProducts(filter) {
+  if (!client) return null;
+  try {
+    let query = client.from("products").select("*").eq("is_active", true);
+    if (filter.category && filter.category !== "semua") {
+      query = query.eq("category", filter.category);
+    }
+    if (filter.search && filter.search.trim() !== "") {
+      const s = filter.search.trim();
+      query = query.or(`name.ilike.%${s}%,compatibility_text.ilike.%${s}%,description.ilike.%${s}%`);
+    }
+    if (filter.bikeType && filter.bikeType !== "all") {
+      const { data: bCompats } = await client.from("product_bike_compatibility").select("product_id").eq("bike_type", filter.bikeType);
+      const pIds = (bCompats || []).map((b) => b.product_id);
+      if (pIds.length === 0) return [];
+      query = query.in("id", pIds);
+    }
+    if (filter.sort === "terbaru") {
+      query = query.order("created_at", { ascending: false });
+    } else if (filter.sort === "terlaris") {
+      query = query.order("sold_count", { ascending: false });
+    } else if (filter.sort === "harga-asc") {
+      query = query.order("price", { ascending: true });
+    } else if (filter.sort === "harga-desc") {
+      query = query.order("price", { ascending: false });
+    } else {
+      query = query.order("rating", { ascending: false }).order("sold_count", { ascending: false });
+    }
+    if (filter.limit) {
+      const start = filter.offset || 0;
+      query = query.range(start, start + filter.limit - 1);
+    }
+    const { data: prods, error: pErr } = await query;
+    if (pErr) return null;
+    const prodIds = (prods || []).map((p) => p.id);
+    let compatMap = /* @__PURE__ */ new Map();
+    if (prodIds.length > 0) {
+      const { data: compats } = await client.from("product_bike_compatibility").select("*").in("product_id", prodIds);
+      if (compats) {
+        for (const c of compats) {
+          const arr = compatMap.get(c.product_id) || [];
+          arr.push(c.bike_type);
+          compatMap.set(c.product_id, arr);
+        }
+      }
+    }
+    return (prods || []).map((p) => {
+      const mapped = mapSupabaseProduct(p);
+      mapped.bikeCompatibility = compatMap.get(p.id) || [];
+      return mapped;
+    });
+  } catch (err) {
+    console.warn("[Supabase] getSupabaseProducts exception:", err);
+    return null;
+  }
+}
+async function getSupabaseProductByIdOrSlug(slugOrId) {
+  if (!client) return null;
+  try {
+    const { data: p, error } = await client.from("products").select("*").or(`slug.eq.${slugOrId},id.eq.${slugOrId}`).limit(1).maybeSingle();
+    if (error || !p) return null;
+    const { data: compats } = await client.from("product_bike_compatibility").select("bike_type").eq("product_id", p.id);
+    const mapped = mapSupabaseProduct(p);
+    mapped.bikeCompatibility = (compats || []).map((c) => c.bike_type);
+    return mapped;
+  } catch (err) {
+    return null;
+  }
+}
+async function createSupabaseProduct(p, targetDb) {
+  const id = p.id || "prod-" + Date.now();
+  const slug = (p.name || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.random().toString(36).substring(2, 6);
+  const specs = {
+    ...typeof p.specs === "object" && p.specs ? p.specs : {},
+    _variationGroups: p.variationGroups || [],
+    _bikeVariants: p.bikeVariants || []
+  };
+  const sbProduct = {
+    id,
+    name: p.name,
+    slug,
+    category: p.category || "cvt",
+    compatibility_text: p.compatibilityText || "Universal",
+    fitment_tag: p.fitmentTag || "Plug & Play (PnP)",
+    price: Number(p.price || 0),
+    original_price: p.originalPrice != null ? Number(p.originalPrice) : null,
+    discount_percent: p.discountPercent != null ? Number(p.discountPercent) : 0,
+    promo_tag: p.promoTag || null,
+    rating: Number(p.rating || 5),
+    sold_count: Number(p.soldCount || 0),
+    image: p.image || "/images/default.jpg",
+    description: p.description || "",
+    specs,
+    is_promo: Boolean(p.isPromo),
+    is_paket_upgrade: Boolean(p.isPaketUpgrade),
+    stock: Number(p.stock || 0),
+    weight_grams: Number(p.weight_grams || 500),
+    origin_city: p.originCity || "Jakarta Timur",
+    is_active: p.isActive !== false,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  if (client) {
+    const { error: insErr } = await client.from("products").insert(sbProduct);
+    if (insErr) {
+      console.warn("[Supabase] create product error:", insErr);
+      throw new Error(insErr.message);
+    }
+    if (p.bikeCompatibility && Array.isArray(p.bikeCompatibility) && p.bikeCompatibility.length > 0) {
+      const compatRows = p.bikeCompatibility.map((b) => ({
+        product_id: id,
+        bike_type: b
+      }));
+      await client.from("product_bike_compatibility").insert(compatRows);
+    }
+  }
+  if (targetDb) {
+    try {
+      targetDb.prepare(`
+        INSERT INTO products (
+          id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
+          discountPercent, promoTag, rating, soldCount, image, description, specs,
+          isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, bike_variants, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        p.name,
+        slug,
+        p.category || "cvt",
+        p.compatibilityText || "Universal",
+        p.fitmentTag || "Plug & Play (PnP)",
+        p.price || 0,
+        p.originalPrice || null,
+        p.discountPercent || 0,
+        p.promoTag || null,
+        p.rating || 5,
+        p.soldCount || 0,
+        p.image || "/images/default.jpg",
+        p.description || "",
+        JSON.stringify(p.specs || {}),
+        p.isPromo ? 1 : 0,
+        p.isPaketUpgrade ? 1 : 0,
+        p.stock || 0,
+        p.weight_grams || 500,
+        p.originCity || "Jakarta Timur",
+        p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+        p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
+        p.isActive !== false ? 1 : 0
+      );
+      if (p.bikeCompatibility && Array.isArray(p.bikeCompatibility)) {
+        const insertCompat = targetDb.prepare("INSERT OR IGNORE INTO product_bike_compatibility (product_id, bike_type) VALUES (?, ?)");
+        for (const b of p.bikeCompatibility) {
+          insertCompat.run(id, b);
+        }
+      }
+    } catch (e) {
+    }
+  }
+  return { success: true, id };
+}
+async function updateSupabaseProduct(id, p, targetDb) {
+  const specs = {
+    ...typeof p.specs === "object" && p.specs ? p.specs : {},
+    _variationGroups: p.variationGroups || [],
+    _bikeVariants: p.bikeVariants || []
+  };
+  const sbUpdate = {
+    name: p.name,
+    category: p.category,
+    compatibility_text: p.compatibilityText,
+    fitment_tag: p.fitmentTag,
+    price: Number(p.price || 0),
+    original_price: p.originalPrice != null ? Number(p.originalPrice) : null,
+    discount_percent: p.discountPercent != null ? Number(p.discountPercent) : 0,
+    promo_tag: p.promoTag || null,
+    image: p.image,
+    description: p.description,
+    specs,
+    is_promo: Boolean(p.isPromo),
+    is_paket_upgrade: Boolean(p.isPaketUpgrade),
+    stock: Number(p.stock || 0),
+    weight_grams: Number(p.weight_grams || 500),
+    origin_city: p.originCity || "Jakarta Timur",
+    is_active: p.isActive !== false,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  if (client) {
+    const { error: updErr } = await client.from("products").update(sbUpdate).eq("id", id);
+    if (updErr) {
+      console.warn("[Supabase] update product error:", updErr);
+      throw new Error(updErr.message);
+    }
+    if (p.bikeCompatibility && Array.isArray(p.bikeCompatibility)) {
+      await client.from("product_bike_compatibility").delete().eq("product_id", id);
+      if (p.bikeCompatibility.length > 0) {
+        const compatRows = p.bikeCompatibility.map((b) => ({
+          product_id: id,
+          bike_type: b
+        }));
+        await client.from("product_bike_compatibility").insert(compatRows);
+      }
+    }
+  }
+  if (targetDb) {
+    try {
+      targetDb.prepare(`
+        UPDATE products SET
+          name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
+          price = ?, originalPrice = ?, discountPercent = ?, promoTag = ?,
+          image = ?, description = ?, specs = ?, isPromo = ?, isPaketUpgrade = ?,
+          stock = ?, weight_grams = ?, originCity = ?, variation_groups = ?, bike_variants = ?, is_active = ?
+        WHERE id = ?
+      `).run(
+        p.name,
+        p.category,
+        p.compatibilityText,
+        p.fitmentTag,
+        p.price,
+        p.originalPrice || null,
+        p.discountPercent || null,
+        p.promoTag || null,
+        p.image,
+        p.description,
+        JSON.stringify(p.specs || {}),
+        p.isPromo ? 1 : 0,
+        p.isPaketUpgrade ? 1 : 0,
+        p.stock,
+        p.weight_grams || 500,
+        p.originCity || "Jakarta Timur",
+        p.variationGroups ? JSON.stringify(p.variationGroups) : null,
+        p.bikeVariants ? JSON.stringify(p.bikeVariants) : null,
+        p.isActive !== false ? 1 : 0,
+        id
+      );
+      if (p.bikeCompatibility && Array.isArray(p.bikeCompatibility)) {
+        targetDb.prepare("DELETE FROM product_bike_compatibility WHERE product_id = ?").run(id);
+        const insertCompat = targetDb.prepare("INSERT INTO product_bike_compatibility (product_id, bike_type) VALUES (?, ?)");
+        for (const b of p.bikeCompatibility) {
+          insertCompat.run(id, b);
+        }
+      }
+    } catch (e) {
+    }
+  }
+  return true;
+}
+async function deleteSupabaseProduct(id, targetDb) {
+  if (client) {
+    await client.from("product_bike_compatibility").delete().eq("product_id", id);
+    const { error } = await client.from("products").delete().eq("id", id);
+    if (error) {
+      console.warn("[Supabase] delete product error:", error);
+      throw new Error(error.message);
+    }
+  }
+  if (targetDb) {
+    try {
+      targetDb.prepare("DELETE FROM product_bike_compatibility WHERE product_id = ?").run(id);
+      targetDb.prepare("DELETE FROM products WHERE id = ?").run(id);
+    } catch (e) {
+    }
+  }
+  return true;
+}
+async function toggleSupabaseProduct(id, targetDb) {
+  let newStatus = true;
+  if (client) {
+    const { data } = await client.from("products").select("is_active").eq("id", id).maybeSingle();
+    newStatus = data ? !data.is_active : true;
+    await client.from("products").update({ is_active: newStatus, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", id);
+  } else if (targetDb) {
+    const prod = targetDb.prepare("SELECT is_active FROM products WHERE id = ?").get(id);
+    newStatus = prod?.is_active === 1 ? false : true;
+  }
+  if (targetDb) {
+    try {
+      targetDb.prepare("UPDATE products SET is_active = ? WHERE id = ?").run(newStatus ? 1 : 0, id);
+    } catch (e) {
+    }
+  }
+  return newStatus;
+}
+async function getSupabaseAdminOrders(status, search) {
+  if (!client) return null;
+  try {
+    let query = client.from("orders").select("*").order("created_at", { ascending: false });
+    if (status && status !== "ALL") {
+      query = query.eq("status", status);
+    }
+    if (search && search.trim() !== "") {
+      const q = search.trim();
+      query = query.or(`invoice_number.ilike.%${q}%,customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%`);
+    }
+    const { data: orders, error: oErr } = await query;
+    if (oErr || !orders) return null;
+    const orderIds = orders.map((o) => o.id);
+    let itemsMap = /* @__PURE__ */ new Map();
+    if (orderIds.length > 0) {
+      const { data: items } = await client.from("order_items").select("*").in("order_id", orderIds);
+      if (items) {
+        for (const it of items) {
+          const arr = itemsMap.get(it.order_id) || [];
+          arr.push(it);
+          itemsMap.set(it.order_id, arr);
+        }
+      }
+    }
+    return orders.map((o) => {
+      let customerNotes = o.customer_notes;
+      if (!customerNotes && o.shipping_address) {
+        const match = o.shipping_address.match(/\(Catatan:\s*(.+?)\)/i);
+        if (match) customerNotes = match[1].trim();
+      }
+      return {
+        ...o,
+        customer_notes: customerNotes || null,
+        items: itemsMap.get(o.id) || []
+      };
+    });
+  } catch (err) {
+    console.warn("[Supabase] getSupabaseAdminOrders exception:", err);
+    return null;
+  }
+}
+async function getSupabaseAnalytics() {
+  if (!client) return null;
+  try {
+    const { data: ords } = await client.from("orders").select("grand_total, status");
+    const { data: lowStock } = await client.from("products").select("*").lt("stock", 5).eq("is_active", true);
+    if (ords) {
+      const paid = ords.filter((o) => ["PAID", "SHIPPED", "COMPLETED"].includes(o.status));
+      const totalRevenue = paid.reduce((sum, o) => sum + (o.grand_total || 0), 0);
+      const needShipping = ords.filter((o) => o.status === "PAID").length;
+      return {
+        totalRevenue,
+        needShipping,
+        lowStockCount: lowStock ? lowStock.length : 0,
+        lowStockItems: lowStock ? lowStock.map(mapSupabaseProduct) : [],
+        totalOrders: ords.length
+      };
+    }
+    return null;
+  } catch (err) {
+    return null;
+  }
 }
 async function syncFromSupabase(targetDb) {
   if (!isSupabaseConfigured() || !client) return;
@@ -2287,7 +2686,7 @@ app.post("/api/voucher/verify", rateLimiter(15, 6e4), (req, res) => {
     }
   });
 });
-app.get("/api/products", (req, res) => {
+app.get("/api/products", async (req, res) => {
   const category = req.query.category;
   const bikeType = req.query.bike;
   const search = req.query.search || req.query.q;
@@ -2295,6 +2694,23 @@ app.get("/api/products", (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 24;
   const offset = (page - 1) * limit;
+  if (isSupabaseConfigured()) {
+    try {
+      const sbProducts = await getSupabaseProducts({
+        category,
+        bikeType,
+        search,
+        sort,
+        limit,
+        offset
+      });
+      if (sbProducts !== null) {
+        return res.json(sbProducts);
+      }
+    } catch (sbErr) {
+      console.warn("[Products] Supabase get fallback to local engine:", sbErr);
+    }
+  }
   let query = "SELECT p.* FROM products p";
   const whereClauses = ["p.is_active = 1"];
   const params = [];
@@ -2341,8 +2757,15 @@ app.get("/api/products", (req, res) => {
   }));
   res.json(products);
 });
-app.get("/api/products/:slugOrId", (req, res) => {
+app.get("/api/products/:slugOrId", async (req, res) => {
   const { slugOrId } = req.params;
+  if (isSupabaseConfigured()) {
+    try {
+      const prod = await getSupabaseProductByIdOrSlug(slugOrId);
+      if (prod) return res.json(prod);
+    } catch (e) {
+    }
+  }
   const p = db_default.prepare("SELECT * FROM products WHERE (slug = ? OR id = ?) AND is_active = 1").get(slugOrId, slugOrId);
   if (!p) return res.status(404).json({ error: "Produk tidak ditemukan" });
   const bikeCompatibility = db_default.prepare("SELECT bike_type FROM product_bike_compatibility WHERE product_id = ?").all(p.id).map((c) => c.bike_type);
@@ -3082,7 +3505,14 @@ app.get("/api/user/orders", authMiddleware, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.get("/api/admin/analytics", authMiddleware, adminMiddleware, (req, res) => {
+app.get("/api/admin/analytics", authMiddleware, adminMiddleware, async (req, res) => {
+  if (isSupabaseConfigured()) {
+    try {
+      const sbAnalytics = await getSupabaseAnalytics();
+      if (sbAnalytics) return res.json(sbAnalytics);
+    } catch (e) {
+    }
+  }
   const revenueRow = db_default.prepare(`SELECT SUM(grand_total) as total FROM orders WHERE status IN ('PAID', 'SHIPPED', 'COMPLETED')`).get();
   const totalRevenue = revenueRow?.total || 0;
   const needShippingRow = db_default.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'PAID'`).get();
@@ -3097,9 +3527,16 @@ app.get("/api/admin/analytics", authMiddleware, adminMiddleware, (req, res) => {
     totalOrders: totalOrdersRow?.count || 0
   });
 });
-app.get("/api/admin/orders", authMiddleware, adminMiddleware, (req, res) => {
+app.get("/api/admin/orders", authMiddleware, adminMiddleware, async (req, res) => {
   const status = req.query.status;
   const search = req.query.search;
+  if (isSupabaseConfigured()) {
+    try {
+      const sbOrders = await getSupabaseAdminOrders(status, search);
+      if (sbOrders !== null) return res.json(sbOrders);
+    } catch (e) {
+    }
+  }
   let query = "SELECT * FROM orders";
   const whereClauses = [];
   const params = [];
@@ -3132,7 +3569,7 @@ app.get("/api/admin/orders", authMiddleware, adminMiddleware, (req, res) => {
   });
   res.json(enriched);
 });
-app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, (req, res) => {
+app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
   const { status, trackingNumber } = req.body;
   const order = db_default.prepare("SELECT * FROM orders WHERE id = ?").get(id);
@@ -3142,27 +3579,58 @@ app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, (req,
       return res.status(400).json({ error: "Nomor resi wajib diisi saat mengubah status menjadi Dikirim" });
     }
     db_default.prepare("UPDATE orders SET status = ?, tracking_number = ? WHERE id = ?").run("SHIPPED", trackingNumber.trim(), id);
+    if (supabase) {
+      await supabase.from("orders").update({
+        status: "SHIPPED",
+        tracking_number: trackingNumber.trim(),
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }).eq("id", id);
+    }
   } else if (status === "COMPLETED") {
     db_default.prepare("UPDATE orders SET status = ? WHERE id = ?").run("COMPLETED", id);
+    if (supabase) {
+      await supabase.from("orders").update({
+        status: "COMPLETED",
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }).eq("id", id);
+    }
   } else if (status === "CANCELLED") {
     db_default.exec("BEGIN TRANSACTION");
     try {
       const items = db_default.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?").all(id);
       const restoreStock = db_default.prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
       for (const item of items) {
-        if (item.product_id) restoreStock.run(item.quantity, item.product_id);
+        if (item.product_id) {
+          restoreStock.run(item.quantity, item.product_id);
+          if (supabase) {
+            Promise.resolve(supabase.rpc("increment_stock", { p_id: item.product_id, qty: item.quantity })).catch(() => {
+            });
+          }
+        }
       }
       if (order.voucher_id) {
         db_default.prepare("UPDATE vouchers SET used_count = MAX(0, used_count - 1) WHERE id = ?").run(order.voucher_id);
       }
       db_default.prepare(`UPDATE orders SET status = 'CANCELLED' WHERE id = ?`).run(id);
       db_default.exec("COMMIT");
+      if (supabase) {
+        await supabase.from("orders").update({
+          status: "CANCELLED",
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        }).eq("id", id);
+      }
     } catch (e) {
       db_default.exec("ROLLBACK");
       return res.status(500).json({ error: e.message });
     }
   } else {
     db_default.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, id);
+    if (supabase) {
+      await supabase.from("orders").update({
+        status,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }).eq("id", id);
+    }
   }
   res.json({ success: true, message: `Status pesanan berhasil diubah menjadi ${status}` });
 });
@@ -3235,7 +3703,17 @@ app.get("/api/orders/:invoiceNumber/biteship-track", async (req, res) => {
     liveTracking
   });
 });
-app.get("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
+app.get("/api/admin/products", authMiddleware, adminMiddleware, async (req, res) => {
+  if (isSupabaseConfigured()) {
+    try {
+      const sbProducts = await getSupabaseAdminProducts();
+      if (sbProducts !== null) {
+        return res.json(sbProducts);
+      }
+    } catch (e) {
+      console.warn("[Admin Products] Supabase fallback to local engine:", e);
+    }
+  }
   const products = db_default.prepare("SELECT * FROM products ORDER BY COALESCE(created_at, rowid) DESC").all();
   const getCompat = db_default.prepare("SELECT bike_type FROM product_bike_compatibility WHERE product_id = ?");
   res.json(
@@ -3251,11 +3729,15 @@ app.get("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
     }))
   );
 });
-app.post("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
+app.post("/api/admin/products", authMiddleware, adminMiddleware, async (req, res) => {
   const p = req.body;
-  const id = p.id || "prod-" + Date.now();
-  const slug = (p.name || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.random().toString(36).substring(2, 6);
   try {
+    if (isSupabaseConfigured()) {
+      const result = await createSupabaseProduct(p, db_default);
+      return res.json(result);
+    }
+    const id = p.id || "prod-" + Date.now();
+    const slug = (p.name || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.random().toString(36).substring(2, 6);
     db_default.prepare(`
       INSERT INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
@@ -3298,10 +3780,14 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) => {
+app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
   const p = req.body;
   try {
+    if (isSupabaseConfigured()) {
+      await updateSupabaseProduct(id, p, db_default);
+      return res.json({ success: true });
+    }
     db_default.prepare(`
       UPDATE products SET
         name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
@@ -3343,31 +3829,71 @@ app.put("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) =
     res.status(500).json({ error: err.message });
   }
 });
-app.delete("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res) => {
+app.delete("/api/admin/products/:id", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
   try {
+    if (isSupabaseConfigured()) {
+      await deleteSupabaseProduct(id, db_default);
+      return res.json({ success: true });
+    }
     db_default.prepare("DELETE FROM products WHERE id = ?").run(id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-app.patch("/api/admin/products/:id/toggle", authMiddleware, adminMiddleware, (req, res) => {
+app.patch("/api/admin/products/:id/toggle", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
-  const prod = db_default.prepare("SELECT is_active FROM products WHERE id = ?").get(id);
-  if (!prod) return res.status(404).json({ error: "Produk tidak ditemukan" });
-  const newStatus = prod.is_active === 1 ? 0 : 1;
-  db_default.prepare("UPDATE products SET is_active = ? WHERE id = ?").run(newStatus, id);
-  res.json({ success: true, is_active: newStatus === 1 });
+  try {
+    if (isSupabaseConfigured()) {
+      const newStatus2 = await toggleSupabaseProduct(id, db_default);
+      return res.json({ success: true, is_active: newStatus2 });
+    }
+    const prod = db_default.prepare("SELECT is_active FROM products WHERE id = ?").get(id);
+    if (!prod) return res.status(404).json({ error: "Produk tidak ditemukan" });
+    const newStatus = prod.is_active === 1 ? 0 : 1;
+    db_default.prepare("UPDATE products SET is_active = ? WHERE id = ?").run(newStatus, id);
+    res.json({ success: true, is_active: newStatus === 1 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
-app.get("/api/admin/vouchers", authMiddleware, adminMiddleware, (req, res) => {
+app.get("/api/admin/vouchers", authMiddleware, adminMiddleware, async (req, res) => {
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { data: vList, error } = await supabase.from("vouchers").select("*").order("id", { ascending: true });
+      if (!error && vList) {
+        return res.json(vList.map(mapSupabaseVoucher));
+      }
+    } catch (e) {
+    }
+  }
   const vouchers = db_default.prepare("SELECT * FROM vouchers ORDER BY id ASC").all();
   res.json(vouchers);
 });
-app.post("/api/admin/vouchers", authMiddleware, adminMiddleware, (req, res) => {
+app.post("/api/admin/vouchers", authMiddleware, adminMiddleware, async (req, res) => {
   const v = req.body;
   const id = "vouch-" + Date.now();
   try {
+    if (isSupabaseConfigured() && supabase) {
+      const sbVoucher = {
+        id,
+        code: v.code.toUpperCase().trim(),
+        title: v.title,
+        subtitle: v.subtitle || "",
+        discount_type: v.discount_type || "FIXED",
+        discount_value: Number(v.discount_value || 0),
+        min_purchase_amount: Number(v.minSpend || 0),
+        max_discount_amount: v.max_discount_amount ? Number(v.max_discount_amount) : null,
+        quota: Number(v.quota || 100),
+        used_count: 0,
+        badge: v.badge || "Promo Baru",
+        claimed: false,
+        is_active: true,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await supabase.from("vouchers").insert(sbVoucher);
+    }
     db_default.prepare(`
       INSERT INTO vouchers (
         id, code, title, subtitle, discount_type, discount_value, minSpend,
@@ -3392,22 +3918,36 @@ app.post("/api/admin/vouchers", authMiddleware, adminMiddleware, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.delete("/api/admin/vouchers/:id", authMiddleware, adminMiddleware, (req, res) => {
+app.delete("/api/admin/vouchers/:id", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
   try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from("vouchers").delete().eq("id", id);
+    }
     db_default.prepare("DELETE FROM vouchers WHERE id = ?").run(id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-app.patch("/api/admin/vouchers/:id/toggle", authMiddleware, adminMiddleware, (req, res) => {
+app.patch("/api/admin/vouchers/:id/toggle", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
-  const v = db_default.prepare("SELECT is_active FROM vouchers WHERE id = ?").get(id);
-  if (!v) return res.status(404).json({ error: "Voucher tidak ditemukan" });
-  const newStatus = v.is_active === 1 ? 0 : 1;
-  db_default.prepare("UPDATE vouchers SET is_active = ? WHERE id = ?").run(newStatus, id);
-  res.json({ success: true, is_active: newStatus === 1 });
+  try {
+    let newStatus = true;
+    if (isSupabaseConfigured() && supabase) {
+      const { data } = await supabase.from("vouchers").select("is_active").eq("id", id).maybeSingle();
+      newStatus = data ? !data.is_active : true;
+      await supabase.from("vouchers").update({ is_active: newStatus }).eq("id", id);
+    } else {
+      const v = db_default.prepare("SELECT is_active FROM vouchers WHERE id = ?").get(id);
+      if (!v) return res.status(404).json({ error: "Voucher tidak ditemukan" });
+      newStatus = v.is_active === 1 ? false : true;
+    }
+    db_default.prepare("UPDATE vouchers SET is_active = ? WHERE id = ?").run(newStatus ? 1 : 0, id);
+    res.json({ success: true, is_active: newStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 app.post("/api/chat/send", optionalAuthMiddleware, async (req, res) => {
   try {

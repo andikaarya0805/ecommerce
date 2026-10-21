@@ -183,25 +183,35 @@ export const AdminPanel: React.FC = () => {
       ]);
 
       if (resAnalytics.status === 'fulfilled' && resAnalytics.value && typeof resAnalytics.value === 'object') {
-        setAnalytics(resAnalytics.value);
+        setAnalytics((prev: any) =>
+          JSON.stringify(prev) === JSON.stringify(resAnalytics.value) ? prev : resAnalytics.value
+        );
       } else {
         setAnalytics({ totalRevenue: 0, needShipping: 0, lowStockCount: 0, lowStockItems: [], totalOrders: 0 });
       }
 
       if (resOrders.status === 'fulfilled' && Array.isArray(resOrders.value)) {
-        setOrders(resOrders.value);
+        setOrders((prev) =>
+          JSON.stringify(prev) === JSON.stringify(resOrders.value) ? prev : resOrders.value
+        );
       } else {
         setOrders([]);
       }
 
-      if (resProducts.status === 'fulfilled' && Array.isArray(resProducts.value) && resProducts.value.length > 0) {
-        setProducts(resProducts.value);
+      if (resProducts.status === 'fulfilled' && Array.isArray(resProducts.value)) {
+        const prods = resProducts.value.length > 0 ? resProducts.value : INITIAL_PRODUCTS;
+        setProducts((prev) =>
+          JSON.stringify(prev) === JSON.stringify(prods) ? prev : prods
+        );
       } else {
         setProducts(INITIAL_PRODUCTS);
       }
 
-      if (resVouchers.status === 'fulfilled' && Array.isArray(resVouchers.value) && resVouchers.value.length > 0) {
-        setVouchers(resVouchers.value);
+      if (resVouchers.status === 'fulfilled' && Array.isArray(resVouchers.value)) {
+        const vList = resVouchers.value.length > 0 ? resVouchers.value : INITIAL_VOUCHERS;
+        setVouchers((prev) =>
+          JSON.stringify(prev) === JSON.stringify(vList) ? prev : vList
+        );
       } else {
         setVouchers(INITIAL_VOUCHERS);
       }
@@ -211,6 +221,29 @@ export const AdminPanel: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const fetchProductsList = async () => {
+    if (!token || token.startsWith('demo-')) return;
+    try {
+      const res = await safeFetchJson<Product[]>('/api/admin/products', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (Array.isArray(res)) {
+        setProducts((prev) =>
+          JSON.stringify(prev) === JSON.stringify(res) ? prev : res
+        );
+      }
+    } catch (e) {
+      console.warn('Fetch products notice:', e);
+    }
+  };
+
+  // Immediate fetch when switching to products tab so user never has to refresh
+  useEffect(() => {
+    if (activeTab === 'products') {
+      fetchProductsList();
+    }
+  }, [activeTab]);
 
   // Fetch Chat Rooms
   const fetchChatRooms = async () => {
@@ -253,7 +286,7 @@ export const AdminPanel: React.FC = () => {
     } catch (e) {}
   };
 
-  // Live polling for chat rooms and active messages (1-second real-time sync)
+  // Live polling for chat rooms and active messages (2-second sync)
   useEffect(() => {
     fetchChatRooms();
     const interval = setInterval(() => {
@@ -261,11 +294,11 @@ export const AdminPanel: React.FC = () => {
       if (selectedChatRoomId && activeTab === 'chats') {
         fetchRoomMessages(selectedChatRoomId);
       }
-    }, 1000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [activeTab, selectedChatRoomId, token]);
 
-  // Live background polling for orders, products & analytics in admin panel (1-second sync)
+  // Live background polling for orders, products & analytics in admin panel (smooth 5s sync without flickering)
   useEffect(() => {
     if (!token || token.startsWith('demo-')) return;
     const interval = setInterval(async () => {
@@ -276,24 +309,23 @@ export const AdminPanel: React.FC = () => {
             safeFetchJson('/api/admin/orders', { headers: { Authorization: `Bearer ${token}` } }),
           ]);
           if (resAnalytics.status === 'fulfilled' && resAnalytics.value) {
-            setAnalytics(resAnalytics.value);
+            setAnalytics((prev: any) =>
+              JSON.stringify(prev) === JSON.stringify(resAnalytics.value) ? prev : resAnalytics.value
+            );
           }
           if (resOrders.status === 'fulfilled' && Array.isArray(resOrders.value)) {
-            setOrders(resOrders.value);
+            setOrders((prev) =>
+              JSON.stringify(prev) === JSON.stringify(resOrders.value) ? prev : resOrders.value
+            );
           }
         } else if (activeTab === 'products') {
-          // If product editing modal is not open, sync products list from db
+          // If product editing modal is not open, sync products list from db smoothly
           if (!isProductModalOpen) {
-            const resProd = await safeFetchJson<Product[]>('/api/admin/products', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (Array.isArray(resProd) && resProd.length > 0) {
-              setProducts(resProd);
-            }
+            await fetchProductsList();
           }
         }
       } catch (e) {}
-    }, 1000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [activeTab, token, isProductModalOpen]);
 
@@ -605,7 +637,7 @@ export const AdminPanel: React.FC = () => {
         variationGroups: finalVariationGroups,
       };
 
-      const res = await fetch(url, {
+      await safeFetchJson(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -614,13 +646,9 @@ export const AdminPanel: React.FC = () => {
         body: JSON.stringify(cleanPayload),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Gagal menyimpan produk');
-      }
-
       setIsProductModalOpen(false);
       setEditingProduct(null);
+      await fetchProductsList();
       fetchAllAdminData();
     } catch (err: any) {
       alert('Error: ' + err.message);
@@ -630,25 +658,31 @@ export const AdminPanel: React.FC = () => {
   const handleDeleteProduct = async (id: string) => {
     if (!confirm('Yakin ingin menghapus produk ini secara permanen?')) return;
     try {
-      const res = await fetch(`/api/admin/products/${id}`, {
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      await safeFetchJson(`/api/admin/products/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) fetchAllAdminData();
-    } catch (err) {
-      console.error(err);
+      await fetchProductsList();
+    } catch (err: any) {
+      alert('Gagal menghapus produk: ' + err.message);
+      fetchProductsList();
     }
   };
 
   const handleToggleProduct = async (id: string) => {
     try {
-      await fetch(`/api/admin/products/${id}/toggle`, {
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, isActive: !p.isActive } : p))
+      );
+      await safeFetchJson(`/api/admin/products/${id}/toggle`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       });
-      fetchAllAdminData();
+      await fetchProductsList();
     } catch (err) {
       console.error(err);
+      fetchProductsList();
     }
   };
 

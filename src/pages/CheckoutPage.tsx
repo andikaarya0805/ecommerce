@@ -22,6 +22,7 @@ import {
   HelpCircle,
   Store,
   Sparkles,
+  MessageCircle,
 } from 'lucide-react';
 
 import { INDONESIA_DESTINATIONS } from '../data/destinations';
@@ -419,11 +420,26 @@ export const CheckoutPage: React.FC = () => {
             </h1>
           </div>
 
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-3 sm:gap-4 text-xs">
             <div className="hidden md:flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
               <ShieldCheck className="w-4 h-4 text-[#EE4D2D]" />
               <span>100% Produk Original & Terverifikasi</span>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('open-jawir-chat', {
+                    detail: { initialMessage: 'Halo Admin Jawir, saya ingin bertanya seputar checkout pesanan saya.' },
+                  })
+                );
+              }}
+              className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-[#EE4D2D] dark:hover:text-[#EE4D2D] font-medium transition-colors cursor-pointer"
+              title="Chat Bantuan Admin"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-[#EE4D2D]" />
+              <span>Bantuan</span>
+            </button>
             <Link
               to="/"
               className="flex items-center gap-1 text-[#EE4D2D] font-bold hover:underline"

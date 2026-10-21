@@ -24,7 +24,12 @@ export const LiveChatWidget: React.FC = () => {
   const { user, token } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const isOnCartPage = location.pathname === '/cart';
+  const isExcludedPage =
+    location.pathname === '/login' ||
+    location.pathname === '/register' ||
+    location.pathname === '/checkout' ||
+    location.pathname === '/cart' ||
+    location.pathname.startsWith('/admin');
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -209,15 +214,16 @@ export const LiveChatWidget: React.FC = () => {
     }
   };
 
+  // Do not render floating trigger on login, register, checkout, cart, or admin pages when closed
+  if (isExcludedPage && !isOpen) {
+    return null;
+  }
+
   return (
-    <div
-      className={`fixed z-40 flex flex-col items-end pointer-events-auto select-none font-sans transition-all duration-300 ${
-        isOnCartPage ? 'bottom-24 sm:bottom-20 right-4' : 'bottom-4 right-4'
-      }`}
-    >
+    <div className="fixed z-40 bottom-4 right-4 flex flex-col items-end pointer-events-auto select-none font-sans transition-all duration-300">
       {/* Mini Tooltip Prompt when closed */}
       {!isOpen && showTooltip && (
-        <div className="relative mb-2 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-700 shadow-2xl text-neutral-200 text-xs flex items-center gap-2.5 max-w-[260px] animate-in fade-in slide-in-from-bottom-2">
+        <div className="hidden sm:flex relative mb-2 px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-700 shadow-2xl text-neutral-200 text-xs items-center gap-2.5 max-w-[260px] animate-in fade-in slide-in-from-bottom-2">
           <Sparkles className="w-4 h-4 text-[#E50914] shrink-0 animate-pulse" />
           <div className="leading-tight">
             <span className="font-bold text-white block">Tanya Admin & Jawir Bot</span>

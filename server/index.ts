@@ -11,6 +11,17 @@ import {
   isSupabaseConfigured,
   checkSupabaseHealth,
   syncFromSupabase,
+  mapSupabaseProduct,
+  mapSupabaseVoucher,
+  getSupabaseAdminProducts,
+  getSupabaseProducts,
+  getSupabaseProductByIdOrSlug,
+  createSupabaseProduct,
+  updateSupabaseProduct,
+  deleteSupabaseProduct,
+  toggleSupabaseProduct,
+  getSupabaseAdminOrders,
+  getSupabaseAnalytics,
 } from './supabase.ts';
 import {
   createSnapTransaction,
@@ -246,7 +257,8 @@ app.post('/api/voucher/verify', rateLimiter(15, 60000), (req: any, res: any) => 
 });
 
 // Get products (with pagination, filtering & sorting)
-app.get('/api/products', (req, res) => {
+// Get products (with pagination, filtering & sorting)
+app.get('/api/products', async (req, res) => {
   const category = req.query.category as string;
   const bikeType = req.query.bike as string;
   const search = (req.query.search as string) || (req.query.q as string);
@@ -255,6 +267,25 @@ app.get('/api/products', (req, res) => {
   const limit = parseInt(req.query.limit as string) || 24;
   const offset = (page - 1) * limit;
 
+  if (isSupabaseConfigured()) {
+    try {
+      const sbProducts = await getSupabaseProducts({
+        category,
+        bikeType,
+        search,
+        sort,
+        limit,
+        offset,
+      });
+      if (sbProducts !== null) {
+        return res.json(sbProducts);
+      }
+    } catch (sbErr) {
+      console.warn('[Products] Supabase get fallback to local engine:', sbErr);
+    }
+  }
+
+  // SQLite fallback
   let query = 'SELECT p.* FROM products p';
   const whereClauses: string[] = ['p.is_active = 1'];
   const params: any[] = [];
@@ -316,8 +347,17 @@ app.get('/api/products', (req, res) => {
 });
 
 // Get single product by slug or id
-app.get('/api/products/:slugOrId', (req, res) => {
+app.get('/api/products/:slugOrId', async (req, res) => {
   const { slugOrId } = req.params;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const prod = await getSupabaseProductByIdOrSlug(slugOrId);
+      if (prod) return res.json(prod);
+    } catch (e) {}
+  }
+
+  // SQLite fallback
   const p = db.prepare('SELECT * FROM products WHERE (slug = ? OR id = ?) AND is_active = 1').get(slugOrId, slugOrId) as any;
   if (!p) return res.status(404).json({ error: 'Produk tidak ditemukan' });
 
@@ -1256,7 +1296,14 @@ app.get('/api/user/orders', authMiddleware, (req: any, res: any) => {
 // =====================================================================
 
 // Admin Analytics Summary
-app.get('/api/admin/analytics', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.get('/api/admin/analytics', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  if (isSupabaseConfigured()) {
+    try {
+      const sbAnalytics = await getSupabaseAnalytics();
+      if (sbAnalytics) return res.json(sbAnalytics);
+    } catch (e) {}
+  }
+
   const revenueRow = db.prepare(`SELECT SUM(grand_total) as total FROM orders WHERE status IN ('PAID', 'SHIPPED', 'COMPLETED')`).get() as any;
   const totalRevenue = revenueRow?.total || 0;
 
@@ -1276,9 +1323,16 @@ app.get('/api/admin/analytics', authMiddleware, adminMiddleware, (req: any, res:
 });
 
 // Admin Orders (OMS) with Filter & Search
-app.get('/api/admin/orders', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.get('/api/admin/orders', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const status = req.query.status as string;
   const search = req.query.search as string;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const sbOrders = await getSupabaseAdminOrders(status, search);
+      if (sbOrders !== null) return res.json(sbOrders);
+    } catch (e) {}
+  }
 
   let query = 'SELECT * FROM orders';
   const whereClauses: string[] = [];
@@ -1320,7 +1374,7 @@ app.get('/api/admin/orders', authMiddleware, adminMiddleware, (req: any, res: an
 });
 
 // Admin Update Order Status & Input Tracking Number
-app.patch('/api/admin/orders/:id/status', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.patch('/api/admin/orders/:id/status', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
   const { status, trackingNumber } = req.body;
 
@@ -1332,8 +1386,21 @@ app.patch('/api/admin/orders/:id/status', authMiddleware, adminMiddleware, (req:
       return res.status(400).json({ error: 'Nomor resi wajib diisi saat mengubah status menjadi Dikirim' });
     }
     db.prepare('UPDATE orders SET status = ?, tracking_number = ? WHERE id = ?').run('SHIPPED', trackingNumber.trim(), id);
+    if (supabase) {
+      await supabase.from('orders').update({
+        status: 'SHIPPED',
+        tracking_number: trackingNumber.trim(),
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+    }
   } else if (status === 'COMPLETED') {
     db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('COMPLETED', id);
+    if (supabase) {
+      await supabase.from('orders').update({
+        status: 'COMPLETED',
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+    }
   } else if (status === 'CANCELLED') {
     // Kembalikan stok jika dibatalkan oleh admin
     db.exec('BEGIN TRANSACTION');
@@ -1341,19 +1408,37 @@ app.patch('/api/admin/orders/:id/status', authMiddleware, adminMiddleware, (req:
       const items = db.prepare('SELECT product_id, quantity FROM order_items WHERE order_id = ?').all(id) as any[];
       const restoreStock = db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?');
       for (const item of items) {
-        if (item.product_id) restoreStock.run(item.quantity, item.product_id);
+        if (item.product_id) {
+          restoreStock.run(item.quantity, item.product_id);
+          if (supabase) {
+            Promise.resolve(supabase.rpc('increment_stock', { p_id: item.product_id, qty: item.quantity })).catch(() => {});
+          }
+        }
       }
       if (order.voucher_id) {
         db.prepare('UPDATE vouchers SET used_count = MAX(0, used_count - 1) WHERE id = ?').run(order.voucher_id);
       }
       db.prepare(`UPDATE orders SET status = 'CANCELLED' WHERE id = ?`).run(id);
       db.exec('COMMIT');
+
+      if (supabase) {
+        await supabase.from('orders').update({
+          status: 'CANCELLED',
+          updated_at: new Date().toISOString()
+        }).eq('id', id);
+      }
     } catch (e: any) {
       db.exec('ROLLBACK');
       return res.status(500).json({ error: e.message });
     }
   } else {
     db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+    if (supabase) {
+      await supabase.from('orders').update({
+        status,
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+    }
   }
 
   res.json({ success: true, message: `Status pesanan berhasil diubah menjadi ${status}` });
@@ -1442,7 +1527,18 @@ app.get('/api/orders/:invoiceNumber/biteship-track', async (req: any, res: any) 
 });
 
 // Admin Products (CRUD)
-app.get('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.get('/api/admin/products', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  if (isSupabaseConfigured()) {
+    try {
+      const sbProducts = await getSupabaseAdminProducts();
+      if (sbProducts !== null) {
+        return res.json(sbProducts);
+      }
+    } catch (e) {
+      console.warn('[Admin Products] Supabase fallback to local engine:', e);
+    }
+  }
+
   const products = db.prepare('SELECT * FROM products ORDER BY COALESCE(created_at, rowid) DESC').all() as any[];
   const getCompat = db.prepare('SELECT bike_type FROM product_bike_compatibility WHERE product_id = ?');
 
@@ -1460,15 +1556,21 @@ app.get('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res: 
   );
 });
 
-app.post('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.post('/api/admin/products', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const p = req.body;
-  const id = p.id || 'prod-' + Date.now();
-  const slug = (p.name || 'product')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 6);
 
   try {
+    if (isSupabaseConfigured()) {
+      const result = await createSupabaseProduct(p, db);
+      return res.json(result);
+    }
+
+    const id = p.id || 'prod-' + Date.now();
+    const slug = (p.name || 'product')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 6);
+
     db.prepare(`
       INSERT INTO products (
         id, name, slug, category, compatibilityText, fitmentTag, price, originalPrice,
@@ -1514,11 +1616,16 @@ app.post('/api/admin/products', authMiddleware, adminMiddleware, (req: any, res:
   }
 });
 
-app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
   const p = req.body;
 
   try {
+    if (isSupabaseConfigured()) {
+      await updateSupabaseProduct(id, p, db);
+      return res.json({ success: true });
+    }
+
     db.prepare(`
       UPDATE products SET
         name = ?, category = ?, compatibilityText = ?, fitmentTag = ?,
@@ -1563,9 +1670,13 @@ app.put('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, r
   }
 });
 
-app.delete('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.delete('/api/admin/products/:id', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
   try {
+    if (isSupabaseConfigured()) {
+      await deleteSupabaseProduct(id, db);
+      return res.json({ success: true });
+    }
     db.prepare('DELETE FROM products WHERE id = ?').run(id);
     res.json({ success: true });
   } catch (err: any) {
@@ -1573,27 +1684,64 @@ app.delete('/api/admin/products/:id', authMiddleware, adminMiddleware, (req: any
   }
 });
 
-app.patch('/api/admin/products/:id/toggle', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.patch('/api/admin/products/:id/toggle', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
-  const prod = db.prepare('SELECT is_active FROM products WHERE id = ?').get(id) as any;
-  if (!prod) return res.status(404).json({ error: 'Produk tidak ditemukan' });
+  try {
+    if (isSupabaseConfigured()) {
+      const newStatus = await toggleSupabaseProduct(id, db);
+      return res.json({ success: true, is_active: newStatus });
+    }
 
-  const newStatus = prod.is_active === 1 ? 0 : 1;
-  db.prepare('UPDATE products SET is_active = ? WHERE id = ?').run(newStatus, id);
-  res.json({ success: true, is_active: newStatus === 1 });
+    const prod = db.prepare('SELECT is_active FROM products WHERE id = ?').get(id) as any;
+    if (!prod) return res.status(404).json({ error: 'Produk tidak ditemukan' });
+
+    const newStatus = prod.is_active === 1 ? 0 : 1;
+    db.prepare('UPDATE products SET is_active = ? WHERE id = ?').run(newStatus, id);
+    res.json({ success: true, is_active: newStatus === 1 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Admin Vouchers (CRUD)
-app.get('/api/admin/vouchers', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.get('/api/admin/vouchers', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const { data: vList, error } = await supabase.from('vouchers').select('*').order('id', { ascending: true });
+      if (!error && vList) {
+        return res.json(vList.map(mapSupabaseVoucher));
+      }
+    } catch (e) {}
+  }
   const vouchers = db.prepare('SELECT * FROM vouchers ORDER BY id ASC').all();
   res.json(vouchers);
 });
 
-app.post('/api/admin/vouchers', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.post('/api/admin/vouchers', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const v = req.body;
   const id = 'vouch-' + Date.now();
 
   try {
+    if (isSupabaseConfigured() && supabase) {
+      const sbVoucher = {
+        id,
+        code: v.code.toUpperCase().trim(),
+        title: v.title,
+        subtitle: v.subtitle || '',
+        discount_type: v.discount_type || 'FIXED',
+        discount_value: Number(v.discount_value || 0),
+        min_purchase_amount: Number(v.minSpend || 0),
+        max_discount_amount: v.max_discount_amount ? Number(v.max_discount_amount) : null,
+        quota: Number(v.quota || 100),
+        used_count: 0,
+        badge: v.badge || 'Promo Baru',
+        claimed: false,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      };
+      await supabase.from('vouchers').insert(sbVoucher);
+    }
+
     db.prepare(`
       INSERT INTO vouchers (
         id, code, title, subtitle, discount_type, discount_value, minSpend,
@@ -1619,9 +1767,12 @@ app.post('/api/admin/vouchers', authMiddleware, adminMiddleware, (req: any, res:
   }
 });
 
-app.delete('/api/admin/vouchers/:id', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.delete('/api/admin/vouchers/:id', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
   try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('vouchers').delete().eq('id', id);
+    }
     db.prepare('DELETE FROM vouchers WHERE id = ?').run(id);
     res.json({ success: true });
   } catch (err: any) {
@@ -1629,14 +1780,25 @@ app.delete('/api/admin/vouchers/:id', authMiddleware, adminMiddleware, (req: any
   }
 });
 
-app.patch('/api/admin/vouchers/:id/toggle', authMiddleware, adminMiddleware, (req: any, res: any) => {
+app.patch('/api/admin/vouchers/:id/toggle', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
-  const v = db.prepare('SELECT is_active FROM vouchers WHERE id = ?').get(id) as any;
-  if (!v) return res.status(404).json({ error: 'Voucher tidak ditemukan' });
+  try {
+    let newStatus = true;
+    if (isSupabaseConfigured() && supabase) {
+      const { data } = await supabase.from('vouchers').select('is_active').eq('id', id).maybeSingle();
+      newStatus = data ? !data.is_active : true;
+      await supabase.from('vouchers').update({ is_active: newStatus }).eq('id', id);
+    } else {
+      const v = db.prepare('SELECT is_active FROM vouchers WHERE id = ?').get(id) as any;
+      if (!v) return res.status(404).json({ error: 'Voucher tidak ditemukan' });
+      newStatus = v.is_active === 1 ? false : true;
+    }
 
-  const newStatus = v.is_active === 1 ? 0 : 1;
-  db.prepare('UPDATE vouchers SET is_active = ? WHERE id = ?').run(newStatus, id);
-  res.json({ success: true, is_active: newStatus === 1 });
+    db.prepare('UPDATE vouchers SET is_active = ? WHERE id = ?').run(newStatus ? 1 : 0, id);
+    res.json({ success: true, is_active: newStatus });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =====================================================================
