@@ -38,7 +38,9 @@ import {
   User,
   ShieldCheck,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  UploadCloud,
+  Image as ImageIcon
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
@@ -129,6 +131,10 @@ export const AdminPanel: React.FC = () => {
   const [varGroups, setVarGroups] = useState<AdminVarGroup[]>([]);
   const [bikeVariantsList, setBikeVariantsList] = useState<string[]>([]);
   const [newBikeVariantInput, setNewBikeVariantInput] = useState<string>('');
+  const [imageUploadMode, setImageUploadMode] = useState<'upload' | 'url'>('upload');
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+  const [isDragOverImage, setIsDragOverImage] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Vouchers CMS State
   const [vouchers, setVouchers] = useState<any[]>([]);
@@ -532,7 +538,77 @@ export const AdminPanel: React.FC = () => {
       setVarGroups([]);
     }
 
+    setImageUploadMode(p.image && p.image.startsWith('http') ? 'url' : 'upload');
     setIsProductModalOpen(true);
+  };
+
+  const processImageFile = (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/jpg'].includes(file.type)) {
+      alert('Format file tidak didukung. Mohon gunakan foto dengan format JPG, JPEG, atau PNG.');
+      return;
+    }
+
+    if (file.size > 12 * 1024 * 1024) {
+      alert('Ukuran file terlalu besar. Maksimal 12MB.');
+      return;
+    }
+
+    setIsUploadingImage(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Resize to max 1200px width/height for razor sharp display with lightweight size
+        const maxDim = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const compressedDataUrl = canvas.toDataURL(mime, 0.85);
+          setEditingProduct((prev: any) => ({
+            ...prev,
+            image: compressedDataUrl,
+          }));
+        }
+        setIsUploadingImage(false);
+      };
+      img.onerror = () => {
+        alert('Gagal memproses gambar. File gambar mungkin rusak.');
+        setIsUploadingImage(false);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => {
+      alert('Gagal membaca file dari komputer.');
+      setIsUploadingImage(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+    if (e.target) {
+      e.target.value = '';
+    }
   };
 
   const openCreateProduct = () => {
@@ -551,7 +627,7 @@ export const AdminPanel: React.FC = () => {
       stock: 25,
       weight_grams: 500,
       originCity: 'Jakarta Timur',
-      image: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60',
+      image: '',
       description: 'Part racing performa tinggi standar kompetisi dan harian.',
       isPromo: true,
       isPaketUpgrade: false,
@@ -567,6 +643,7 @@ export const AdminPanel: React.FC = () => {
     setBikeVariantsList(['Vario 125 / 150', 'Vario 160 / PCX 160']);
     setNewBikeVariantInput('');
     setVarGroups([]);
+    setImageUploadMode('upload');
 
     setIsProductModalOpen(true);
   };
@@ -2861,33 +2938,182 @@ export const AdminPanel: React.FC = () => {
               </div>
 
               {/* SECTION 5: Foto & Deskripsi Produk */}
-              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-3">
-                <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
-                  <ShoppingBag className="w-3.5 h-3.5 text-[#E50914]" />
-                  Foto & Deskripsi Produk
-                </span>
+              <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-[11px] font-bold text-neutral-200 uppercase tracking-wider block flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-[#E50914]" />
+                    Foto & Deskripsi Produk
+                  </span>
 
-                <div>
-                  <label className="block text-neutral-300 font-bold mb-1">URL Foto Produk</label>
-                  <div className="flex gap-3 items-center">
-                    <img
-                      src={editingProduct.image || '/images/default.jpg'}
-                      alt="Preview"
-                      referrerPolicy="no-referrer"
-                      className="w-14 h-14 rounded-lg object-cover bg-black border border-neutral-700 flex-shrink-0"
-                      onError={(e: any) => {
-                        e.target.src = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60';
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="https://images.unsplash.com/..."
-                      value={editingProduct.image || ''}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
-                      className="flex-1 px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                    />
+                  {/* Mode Selector */}
+                  <div className="flex rounded-lg bg-black border border-neutral-800 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setImageUploadMode('upload')}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        imageUploadMode === 'upload'
+                          ? 'bg-[#E50914] text-white shadow'
+                          : 'text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      <UploadCloud className="w-3 h-3" />
+                      <span>Upload File (JPG / PNG)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageUploadMode('url')}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        imageUploadMode === 'url'
+                          ? 'bg-[#E50914] text-white shadow'
+                          : 'text-neutral-400 hover:text-white'
+                      }`}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Link URL</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* Upload Mode: File Upload (JPG/PNG) */}
+                {imageUploadMode === 'upload' ? (
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/jpeg,image/png,image/webp,image/jpg"
+                      onChange={handleImageFileUpload}
+                      className="hidden"
+                    />
+
+                    {editingProduct.image ? (
+                      <div className="flex flex-col sm:flex-row items-center gap-4 p-3.5 rounded-xl bg-black/60 border border-neutral-800">
+                        <div className="relative group w-28 h-28 rounded-lg overflow-hidden border border-neutral-700 bg-neutral-950 flex-shrink-0">
+                          <img
+                            src={editingProduct.image}
+                            alt="Foto Produk"
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <span className="text-[10px] font-bold text-white bg-black/80 px-2 py-1 rounded">
+                              Preview
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 text-center sm:text-left space-y-2">
+                          <div className="flex items-center gap-2 justify-center sm:justify-start">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-800 text-emerald-300">
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              Foto Berhasil Dipilih
+                            </span>
+                            {editingProduct.image.startsWith('data:') && (
+                              <span className="text-[10px] text-neutral-400 font-mono">
+                                (Format: {editingProduct.image.includes('image/png') ? 'PNG' : 'JPG'} HD)
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-neutral-400">
+                            Foto part ini sudah tersimpan dan siap dipublikasikan ke etalase toko.
+                          </p>
+                          <div className="flex items-center gap-2 justify-center sm:justify-start">
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={isUploadingImage}
+                              className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <UploadCloud className="w-3.5 h-3.5 text-[#E50914]" />
+                              <span>Ganti Foto Lain</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingProduct({ ...editingProduct, image: '' })}
+                              className="px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Hapus Foto</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragOverImage(true);
+                        }}
+                        onDragLeave={() => setIsDragOverImage(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDragOverImage(false);
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) processImageFile(file);
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`p-6 rounded-xl border-2 border-dashed transition-all cursor-pointer text-center space-y-2 ${
+                          isDragOverImage
+                            ? 'border-[#E50914] bg-red-950/20'
+                            : 'border-neutral-700 hover:border-[#E50914] bg-black/50 hover:bg-black/80'
+                        }`}
+                      >
+                        <div className="w-12 h-12 mx-auto rounded-full bg-neutral-900 border border-neutral-700 flex items-center justify-center text-[#E50914]">
+                          {isUploadingImage ? (
+                            <RefreshCw className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <UploadCloud className="w-6 h-6" />
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-bold text-white">
+                            {isUploadingImage
+                              ? 'Sedang Memproses Foto...'
+                              : 'Klik untuk Memilih Foto Produk dari Laptop / HP'}
+                          </p>
+                          <p className="text-[11px] text-neutral-400 mt-0.5">
+                            Atau tarik & lepas (drag and drop) file foto ke kotak ini
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-neutral-900 text-neutral-300 border border-neutral-800">
+                            JPG
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-neutral-900 text-neutral-300 border border-neutral-800">
+                            JPEG
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-neutral-900 text-neutral-300 border border-neutral-800">
+                            PNG
+                          </span>
+                          <span className="text-[10px] text-neutral-500">Maksimal 12MB</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* URL Input Mode */
+                  <div className="space-y-2">
+                    <label className="block text-neutral-300 font-bold mb-1">URL Foto Produk</label>
+                    <div className="flex gap-3 items-center">
+                      <img
+                        src={editingProduct.image || '/images/default.jpg'}
+                        alt="Preview"
+                        referrerPolicy="no-referrer"
+                        className="w-14 h-14 rounded-lg object-cover bg-black border border-neutral-700 flex-shrink-0"
+                        onError={(e: any) => {
+                          e.target.src = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60';
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="https://images.unsplash.com/..."
+                        value={editingProduct.image || ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
+                        className="flex-1 px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-neutral-300 font-bold mb-1">Deskripsi Lengkap Produk</label>
