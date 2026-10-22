@@ -28,25 +28,108 @@ export interface ScrapedShopeeProduct {
 export function detectCategory(title: string, desc: string): string {
   const text = `${title} ${desc}`.toLowerCase();
 
-  if (text.includes('cvt') || text.includes('pulley') || text.includes('roller') || text.includes('v-belt') || text.includes('vbelt') || text.includes('mangkok') || text.includes('per cvt') || text.includes('kampas ganda')) {
+  // 1. Part CVT
+  if (
+    text.includes('cvt') ||
+    text.includes('pulley') ||
+    text.includes('roller') ||
+    text.includes('v-belt') ||
+    text.includes('vbelt') ||
+    text.includes('mangkok') ||
+    text.includes('per cvt') ||
+    text.includes('per sentri') ||
+    text.includes('kampas ganda')
+  ) {
     return 'part-cvt';
   }
-  if (text.includes('shock') || text.includes('suspensi') || text.includes('monoshock') || text.includes('breaker') || text.includes('fork') || text.includes('tabung')) {
+
+  // 2. Shockbreaker
+  if (
+    text.includes('shock') ||
+    text.includes('suspensi') ||
+    text.includes('monoshock') ||
+    text.includes('breaker') ||
+    text.includes('fork') ||
+    (text.includes('tabung') && !text.includes('oli'))
+  ) {
     return 'shockbreaker';
   }
-  if (text.includes('rem') || text.includes('kaliper') || text.includes('disc') || text.includes('piringan') || text.includes('master rem') || text.includes('brake') || text.includes('selang rem')) {
+
+  // 3. Pengereman
+  if (
+    text.includes('rem') ||
+    text.includes('kaliper') ||
+    text.includes('disc') ||
+    text.includes('piringan') ||
+    text.includes('master rem') ||
+    text.includes('brake') ||
+    text.includes('selang rem')
+  ) {
     return 'pengereman';
   }
-  if (text.includes('velg') || text.includes('pelek') || text.includes('rim') || text.includes('tromol') || text.includes('jari-jari')) {
+
+  // 4. Velg
+  if (
+    text.includes('velg') ||
+    text.includes('pelek') ||
+    text.includes('rim') ||
+    text.includes('tromol') ||
+    text.includes('jari-jari')
+  ) {
     return 'velg';
   }
-  if (text.includes('noken') || text.includes('camshaft') || text.includes('temlar') || text.includes('rocker arm')) {
+
+  // 5. Noken As
+  if (
+    text.includes('noken') ||
+    text.includes('camshaft') ||
+    text.includes('temlar') ||
+    text.includes('rocker arm') ||
+    text.includes('rra')
+  ) {
     return 'noken-as';
   }
-  if (text.includes('blok') || text.includes('bore up') || text.includes('piston') || text.includes('silinder') || text.includes('cylinder') || text.includes('head')) {
+
+  // 6. Blok Mesin / Intake / Engine / Throttle Body / Injektor
+  if (
+    text.includes('throttle') ||
+    text.includes('tb ') ||
+    text.includes('tb-') ||
+    text.includes('tps') ||
+    text.includes('velocity') ||
+    text.includes('banana') ||
+    text.includes('intake') ||
+    text.includes('manifold') ||
+    text.includes('injektor') ||
+    text.includes('injector') ||
+    text.includes('karbu') ||
+    text.includes('karburator') ||
+    text.includes('blok') ||
+    text.includes('bore up') ||
+    text.includes('piston') ||
+    text.includes('seher') ||
+    text.includes('silinder') ||
+    text.includes('cylinder') ||
+    text.includes('head') ||
+    text.includes('klep')
+  ) {
     return 'blok-mesin';
   }
-  if (text.includes('baut') || text.includes('probolt') || text.includes('spion') || text.includes('handgrip') || text.includes('grip') || text.includes('cnc') || text.includes('aksesoris') || text.includes('cover')) {
+
+  // 7. Accesories / Knalpot / Baut
+  if (
+    text.includes('knalpot') ||
+    text.includes('exhaust') ||
+    text.includes('muffler') ||
+    text.includes('baut') ||
+    text.includes('probolt') ||
+    text.includes('spion') ||
+    text.includes('handgrip') ||
+    text.includes('grip') ||
+    text.includes('cnc') ||
+    text.includes('aksesoris') ||
+    text.includes('cover')
+  ) {
     return 'accesories';
   }
 
@@ -112,13 +195,167 @@ export function parseTitleFromUrl(url: string): string {
   return 'Produk Racing Speedshop Original';
 }
 
-export async function scrapeShopeeProduct(rawUrl: string): Promise<ScrapedShopeeProduct> {
+export function formatShopeeItemData(item: any, rawUrl: string): ScrapedShopeeProduct {
+  const title = item.name || '';
+  const rawPrice = item.price_min || item.price || 0;
+  const price = rawPrice > 1000000 ? Math.round(rawPrice / 100000) : rawPrice || 185000;
+  const rawOrig = item.price_max_before_discount || item.price_before_discount || rawPrice;
+  const originalPrice = rawOrig > 1000000 ? Math.round(rawOrig / 100000) : Math.round(price * 1.25);
+
+  const rawImages: string[] = Array.isArray(item.images) ? item.images : [];
+  const images = rawImages.map((h: string) =>
+    h.startsWith('http') ? h : `https://down-id.img.susercontent.com/file/${h}`
+  );
+  if (item.image && !images.includes(item.image)) {
+    const mainImg = item.image.startsWith('http')
+      ? item.image
+      : `https://down-id.img.susercontent.com/file/${item.image}`;
+    images.unshift(mainImg);
+  }
+
+  // Also check URL query params for image_ids
+  try {
+    const urlObj = new URL(rawUrl);
+    const imgParam = urlObj.searchParams.get('image_ids') || urlObj.searchParams.get('image');
+    if (imgParam) {
+      const ids = imgParam.split(',').map((s: string) => s.trim()).filter(Boolean);
+      for (const id of ids) {
+        const fullUrl = id.startsWith('http') ? id : `https://down-id.img.susercontent.com/file/${id}`;
+        if (!images.includes(fullUrl)) {
+          images.unshift(fullUrl);
+        }
+      }
+    }
+  } catch (e) {}
+
+  const description = item.description || `${title} original AH1 Racing kualitas tinggi standar balap dan harian. Presisi Plug & Play.`;
+  const category = detectCategory(title, description);
+  const { bikeCompatibility, bikeVariants } = detectBikeCompatibility(title, description);
+
+  // Extract variation groups with multi-tier model mapping
+  const variationGroups: ScrapedShopeeProduct['variationGroups'] = [];
+  const tierVariations = item.tier_variations;
+  const models = item.models;
+
+  if (Array.isArray(tierVariations) && tierVariations.length > 0) {
+    tierVariations.forEach((tier: any, tierIdx: number) => {
+      if (tier.name && Array.isArray(tier.options)) {
+        const options = tier.options.map((optName: string, optIdx: number) => {
+          let optPrice = price;
+          let optStock = 35;
+
+          if (Array.isArray(models) && models.length > 0) {
+            const matchingModels = models.filter((m: any) => {
+              if (Array.isArray(m.tier_index) && m.tier_index[tierIdx] === optIdx) return true;
+              if (Array.isArray(m.extinfo?.tier_index) && m.extinfo.tier_index[tierIdx] === optIdx) return true;
+              if (typeof m.name === 'string') {
+                if (m.name.trim() === optName.trim()) return true;
+                const parts = m.name.split(',').map((p: string) => p.trim());
+                if (parts[tierIdx] && parts[tierIdx].toLowerCase() === optName.trim().toLowerCase()) return true;
+                if (parts.some((p: string) => p.toLowerCase() === optName.trim().toLowerCase())) return true;
+              }
+              return false;
+            });
+
+            if (matchingModels.length > 0) {
+              const prices = matchingModels
+                .map((m: any) => {
+                  const p = m.price || m.price_before_discount || 0;
+                  return p > 1000000 ? Math.round(p / 100000) : p;
+                })
+                .filter((p: number) => p > 0);
+              if (prices.length > 0) optPrice = Math.min(...prices);
+              const totalStock = matchingModels.reduce((acc: number, m: any) => acc + (m.stock || 0), 0);
+              optStock = totalStock > 0 ? totalStock : 30;
+            }
+          }
+
+          let optImage: string | undefined = undefined;
+          if (Array.isArray(tier.images) && tier.images[optIdx]) {
+            const imgHash = tier.images[optIdx];
+            optImage = imgHash.startsWith('http')
+              ? imgHash
+              : `https://down-id.img.susercontent.com/file/${imgHash}`;
+          }
+
+          return {
+            name: optName,
+            price: optPrice > 0 ? optPrice : price,
+            stock: optStock,
+            image: optImage,
+          };
+        });
+
+        variationGroups.push({
+          name: tier.name,
+          options,
+        });
+      }
+    });
+  }
+
+  const finalVarGroups =
+    variationGroups.length > 0
+      ? variationGroups
+      : generateIntelligentVariations(title, description, price);
+
+  return {
+    name: title,
+    category,
+    price: price || 185000,
+    originalPrice: originalPrice > price ? originalPrice : Math.round(price * 1.25),
+    stock: item.stock || 50,
+    weight: item.item_status?.weight || 500,
+    image: images[0] || 'https://down-id.img.susercontent.com/file/sg-11134201-82585-mukfwq97h6ve75',
+    images: images.length > 0 ? images : ['https://down-id.img.susercontent.com/file/sg-11134201-82585-mukfwq97h6ve75'],
+    description,
+    rating: item.item_rating?.rating_star ? Number(item.item_rating.rating_star.toFixed(1)) : 4.9,
+    soldCount: item.historical_sold || item.sold || 88,
+    promoTag: 'MALL',
+    fitmentTag: '100% PnP Presisi',
+    compatibilityText: bikeVariants.join(', ') || 'Universal',
+    bikeCompatibility,
+    bikeVariants,
+    variationGroups: finalVarGroups,
+  };
+}
+
+export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string): Promise<ScrapedShopeeProduct> {
   let targetUrl = rawUrl.trim();
   if (!targetUrl.startsWith('http')) {
     targetUrl = 'https://' + targetUrl;
   }
 
   console.log('[Shopee Scraper] Starting scrape for:', targetUrl);
+
+  // Attempt direct Shopee Item API fetch if shopid & itemid exist in URL
+  try {
+    const match = targetUrl.match(/-i\.(\d+)\.(\d+)/) || targetUrl.match(/product\/(\d+)\/(\d+)/);
+    if (match) {
+      const shopid = match[1];
+      const itemid = match[2];
+      const headers: Record<string, string> = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'application/json',
+        Referer: targetUrl,
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      if (customCookie) {
+        headers['Cookie'] = customCookie;
+      }
+      const apiRes = await fetch(`https://shopee.co.id/api/v4/item/get?shopid=${shopid}&itemid=${itemid}`, {
+        headers,
+      });
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        if (json?.data && json.data.name) {
+          console.log('[Shopee Scraper] Successfully fetched data via direct Shopee Item API!');
+          return formatShopeeItemData(json.data, targetUrl);
+        }
+      }
+    }
+  } catch (e) {}
 
   // If running in Vercel Serverless or if Chromium is unavailable, run lightweight HTTP fallback
   let browser: any = null;
@@ -147,6 +384,7 @@ export async function scrapeShopeeProduct(rawUrl: string): Promise<ScrapedShopee
       timezoneId: 'Asia/Jakarta',
       extraHTTPHeaders: {
         'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+        ...(customCookie ? { Cookie: customCookie } : {}),
       },
     });
 
@@ -531,14 +769,41 @@ export async function scrapeShopeeProduct(rawUrl: string): Promise<ScrapedShopee
     const { bikeCompatibility, bikeVariants } = detectBikeCompatibility(title, description);
 
     let price = domData.price && domData.price > 1000 ? domData.price : 185000;
+    const titleLower = title.toLowerCase();
     if (category === 'noken-as' && (!domData.price || domData.price === 185000)) {
       price = 95000;
+    } else if ((titleLower.includes('throttle') || titleLower.includes('tb ')) && (!domData.price || domData.price === 185000)) {
+      price = 215000;
+    } else if ((titleLower.includes('injektor') || titleLower.includes('injector')) && (!domData.price || domData.price === 185000)) {
+      price = 135000;
+    } else if (titleLower.includes('roller') && (!domData.price || domData.price === 185000)) {
+      price = 95000;
+    } else if ((titleLower.includes('knalpot') || titleLower.includes('exhaust')) && (!domData.price || domData.price === 185000)) {
+      price = 350000;
+    } else if ((titleLower.includes('head') || titleLower.includes('blok')) && (!domData.price || domData.price === 185000)) {
+      price = 450000;
     }
 
-    const images =
-      domData.images.length > 0
-        ? domData.images
-        : ['https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=80'];
+    const images: string[] = [...domData.images];
+
+    // Ensure images from URL query params (image_ids / image) are included
+    try {
+      const urlObj = new URL(targetUrl);
+      const imgParam = urlObj.searchParams.get('image_ids') || urlObj.searchParams.get('image');
+      if (imgParam) {
+        const ids = imgParam.split(',').map((s: string) => s.trim()).filter(Boolean);
+        for (const id of ids) {
+          const fullUrl = id.startsWith('http') ? id : `https://down-id.img.susercontent.com/file/${id}`;
+          if (!images.includes(fullUrl)) {
+            images.unshift(fullUrl);
+          }
+        }
+      }
+    } catch (e) {}
+
+    if (images.length === 0) {
+      images.push('https://down-id.img.susercontent.com/file/sg-11134201-82585-mukfwq97h6ve75');
+    }
 
     const finalVarGroups =
       domData.variationGroups && domData.variationGroups.length > 0
@@ -575,6 +840,7 @@ export async function scrapeShopeeProduct(rawUrl: string): Promise<ScrapedShopee
 export async function scrapeShopeeViaHttpFallback(url: string): Promise<ScrapedShopeeProduct> {
   let parsedName = '';
   let imageIdFromUrl = '';
+  const images: string[] = [];
 
   try {
     const urlObj = new URL(url);
@@ -592,18 +858,24 @@ export async function scrapeShopeeViaHttpFallback(url: string): Promise<ScrapedS
         .trim();
     }
 
-    const imgId = urlObj.searchParams.get('image_ids') || urlObj.searchParams.get('image');
-    if (imgId) {
-      imageIdFromUrl = imgId.split(',')[0];
+    const imgParam = urlObj.searchParams.get('image_ids') || urlObj.searchParams.get('image');
+    if (imgParam) {
+      const ids = imgParam.split(',').map((s: string) => s.trim()).filter(Boolean);
+      for (const id of ids) {
+        const fullUrl = id.startsWith('http') ? id : `https://down-id.img.susercontent.com/file/${id}`;
+        if (!images.includes(fullUrl)) {
+          images.push(fullUrl);
+        }
+      }
+      if (images.length > 0) {
+        imageIdFromUrl = images[0];
+      }
     }
   } catch (e) {}
 
   let title = parsedName || 'Produk Racing Speedshop Original';
   let description = `${title} kualitas tinggi standar balap dan harian. Presisi Plug & Play (PnP).`;
-  let image = imageIdFromUrl
-    ? `https://down-id.img.susercontent.com/file/${imageIdFromUrl}`
-    : 'https://down-id.img.susercontent.com/file/sg-11134201-82585-mukfwq97h6ve75';
-  const images: string[] = [];
+  let image = imageIdFromUrl || 'https://down-id.img.susercontent.com/file/sg-11134201-82585-mukfwq97h6ve75';
 
   // Try lightweight HTTP fetch
   try {
@@ -627,7 +899,9 @@ export async function scrapeShopeeViaHttpFallback(url: string): Promise<ScrapedS
       }
       if (ogImage && !ogImage.includes('favicon') && !ogImage.includes('logo')) {
         image = ogImage;
-        images.push(ogImage);
+        if (!images.includes(ogImage)) {
+          images.unshift(ogImage);
+        }
       }
       if (ogDesc) {
         description = ogDesc.trim();
@@ -640,13 +914,18 @@ export async function scrapeShopeeViaHttpFallback(url: string): Promise<ScrapedS
   const category = detectCategory(title, description);
   const { bikeCompatibility, bikeVariants } = detectBikeCompatibility(title, description);
 
-  let price = 175000;
-  if (category === 'blok-mesin') price = 365000;
+  let price = 185000;
+  const titleLower = title.toLowerCase();
+  if (titleLower.includes('throttle') || titleLower.includes('tb ')) price = 215000;
   else if (category === 'noken-as') price = 95000;
-  else if (category === 'part-cvt') price = 195000;
-  else if (category === 'shockbreaker') price = 850000;
-  else if (category === 'pengereman') price = 450000;
+  else if (titleLower.includes('injektor') || titleLower.includes('injector')) price = 135000;
+  else if (titleLower.includes('roller')) price = 95000;
+  else if (titleLower.includes('knalpot') || titleLower.includes('exhaust')) price = 350000;
+  else if (category === 'part-cvt') price = 185000;
+  else if (category === 'shockbreaker') price = 450000;
+  else if (category === 'pengereman') price = 350000;
   else if (category === 'velg') price = 1250000;
+  else if (category === 'blok-mesin') price = 450000;
   else price = 135000;
 
   if (images.length === 0) {
@@ -684,8 +963,96 @@ export function generateIntelligentVariations(
 ): ScrapedShopeeProduct['variationGroups'] {
   const text = `${title} ${desc}`.toLowerCase();
 
-  // 1. Noken As / Camshaft (Matches AH1 Racing: MERK + ISI)
-  if (text.includes('noken') || text.includes('camshaft') || text.includes('noken as')) {
+  // Helper to extract valve sizes from title (e.g. "24-28 26-30 27-31 23-27")
+  const extractValveSizes = () => {
+    const valveMatches = title.match(/\b\d{2}[\-\/]\d{2}\b/g);
+    if (valveMatches && valveMatches.length > 0) {
+      return Array.from(new Set(valveMatches.map((v) => v.replace('-', ' / ') + ' mm')));
+    }
+    return ['23 / 27 mm', '24 / 28 mm', '26 / 30 mm', '27 / 31 mm'];
+  };
+
+  // Helper to extract diameter sizes from title (e.g. "26 28 30 32 34")
+  const extractDiameterSizes = () => {
+    const numMatches = title.match(/\b(24|26|28|30|32|34|36|38|40)\b/g);
+    if (numMatches && numMatches.length > 1) {
+      return Array.from(new Set(numMatches.map((n) => `${n} mm`)));
+    }
+    return ['26 mm', '28 mm', '30 mm', '32 mm', '34 mm'];
+  };
+
+  // 1. Throttle Body (TB) & Intake System (Matches AH1 Racing: UKURAN + ISI)
+  if (
+    text.includes('throttle') ||
+    text.includes('tb ') ||
+    text.includes('tb-') ||
+    text.includes('tps') ||
+    text.includes('banana') ||
+    (text.includes('velocity') && !text.includes('shock'))
+  ) {
+    const p = basePrice > 0 ? basePrice : 215000;
+    const sizes = extractDiameterSizes();
+
+    return [
+      {
+        name: 'UKURAN',
+        options: sizes.map((sizeName, idx) => {
+          const num = parseInt(sizeName.replace(/\D/g, ''), 10);
+          let extra = 0;
+          if (num >= 30 && num < 32) extra = 20000;
+          else if (num >= 32 && num < 34) extra = 40000;
+          else if (num >= 34) extra = 60000;
+          return {
+            name: sizeName,
+            price: p + extra,
+            stock: 35 - idx * 2 > 10 ? 35 - idx * 2 : 20,
+          };
+        }),
+      },
+      {
+        name: 'ISI',
+        options: [
+          { name: 'TB ONLY', price: p, stock: 45 },
+          { name: 'TB + TPS SENSOR', price: p + 70000, stock: 35 },
+          { name: 'TB + VELOCITY CORONG', price: p + 80000, stock: 30 },
+          { name: 'TB + TPS + BANANA VELOCITY', price: p + 150000, stock: 25 },
+        ],
+      },
+    ];
+  }
+
+  // 2. Cylinder Block / Head / Klep (Matches AH1 Racing: UKURAN KLEP + ISI)
+  if (
+    (text.includes('head') && (text.includes('klep') || text.includes('cylinder') || text.includes('blok') || text.includes('porting'))) ||
+    text.includes('blok head') ||
+    text.includes('super head')
+  ) {
+    const p = basePrice > 0 ? basePrice : 450000;
+    const valveSizes = extractValveSizes();
+
+    return [
+      {
+        name: 'UKURAN KLEP',
+        options: valveSizes.map((vSize, idx) => ({
+          name: vSize,
+          price: p + idx * 35000,
+          stock: 30 - idx * 2,
+        })),
+      },
+      {
+        name: 'ISI',
+        options: [
+          { name: 'HEAD ONLY', price: p, stock: 40 },
+          { name: 'HEAD + KLEP CARBON', price: p + 135000, stock: 30 },
+          { name: 'HEAD + KLEP + PER KLEP RACING', price: p + 235000, stock: 25 },
+          { name: 'FULLSET PORTING CNC', price: p + 400000, stock: 15 },
+        ],
+      },
+    ];
+  }
+
+  // 3. Noken As / Camshaft (Matches AH1 Racing: MERK + ISI)
+  if (text.includes('noken') || text.includes('camshaft') || text.includes('temlar') || text.includes('rocker arm')) {
     return [
       {
         name: 'MERK',
@@ -706,12 +1073,62 @@ export function generateIntelligentVariations(
       },
       {
         name: 'ISI',
-        options: [{ name: 'NOKEN AS MENTAH', price: 95000, stock: 100 }],
+        options: [
+          { name: 'NOKEN AS MENTAH', price: 95000, stock: 100 },
+          { name: 'NOKEN AS + PER KLEP RACING', price: 175000, stock: 40 },
+        ],
       },
     ];
   }
 
-  // 2. Roller CVT
+  // 4. Injektor Racing (Flow Rate CC + Tipe Soket)
+  if (text.includes('injektor') || text.includes('injector')) {
+    const p = basePrice > 0 ? basePrice : 135000;
+    return [
+      {
+        name: 'FLOW RATE (CC)',
+        options: [
+          { name: '120 CC (Standar / Porting)', price: p, stock: 40 },
+          { name: '140 CC (Bore Up 130-150cc)', price: p, stock: 45 },
+          { name: '160 CC (Bore Up 155-170cc)', price: p + 10000, stock: 40 },
+          { name: '180 CC (Bore Up 180-200cc)', price: p + 20000, stock: 35 },
+          { name: '200 CC (Spek Balap FFA)', price: p + 30000, stock: 25 },
+        ],
+      },
+      {
+        name: 'TIPE SOKET',
+        options: [
+          { name: 'Keihin Soket Besar (Beat FI/Vario 125/150)', price: p, stock: 50 },
+          { name: 'Keihin Soket Kecil (Genio/Beat New K1A)', price: p, stock: 40 },
+          { name: 'Yamaha Soket (NMAX/Aerox/Mio M3)', price: p, stock: 40 },
+        ],
+      },
+    ];
+  }
+
+  // 5. Knalpot Racing (Inlet + Finishing)
+  if (text.includes('knalpot') || text.includes('exhaust') || text.includes('muffler') || text.includes('silincer')) {
+    const p = basePrice > 0 ? basePrice : 350000;
+    return [
+      {
+        name: 'UKURAN INLET',
+        options: [
+          { name: 'Inlet 38 mm (Standar Porting / Harian)', price: p, stock: 35 },
+          { name: 'Inlet 50 mm (Bore Up / FFA Balap)', price: p + 35000, stock: 30 },
+        ],
+      },
+      {
+        name: 'FINISHING',
+        options: [
+          { name: 'Black Doff Coating', price: p, stock: 40 },
+          { name: 'Silver Stainless Steel', price: p + 20000, stock: 35 },
+          { name: 'Titanium Look Blue', price: p + 65000, stock: 20 },
+        ],
+      },
+    ];
+  }
+
+  // 6. Roller CVT
   if (text.includes('roller')) {
     const p = basePrice > 0 ? basePrice : 95000;
     return [
@@ -740,8 +1157,8 @@ export function generateIntelligentVariations(
     ];
   }
 
-  // 3. Shockbreaker
-  if (text.includes('shock') || text.includes('suspensi') || text.includes('breaker')) {
+  // 7. Shockbreaker
+  if (text.includes('shock') || text.includes('suspensi') || text.includes('breaker') || text.includes('monoshock')) {
     const p = basePrice > 0 ? basePrice : 450000;
     return [
       {
@@ -764,7 +1181,7 @@ export function generateIntelligentVariations(
     ];
   }
 
-  // 4. Pengereman / Kaliper / Disc
+  // 8. Pengereman / Kaliper / Disc
   if (text.includes('kaliper') || text.includes('disc') || text.includes('piringan') || text.includes('rem')) {
     const p = basePrice > 0 ? basePrice : 350000;
     return [
@@ -787,53 +1204,124 @@ export function generateIntelligentVariations(
     ];
   }
 
-  // 5. CVT Part / Pulley / Mangkok / Per CVT
-  if (text.includes('cvt') || text.includes('pulley') || text.includes('mangkok') || text.includes('per cvt')) {
+  // 9. Pulley / Rumah Roller Bubut
+  if (text.includes('pulley') || text.includes('rumah roller') || text.includes('face comp')) {
     const p = basePrice > 0 ? basePrice : 185000;
     return [
       {
-        name: 'Tipe Varian / Motor',
+        name: 'DERAJAT BUBUT',
         options: [
-          { name: 'Vario 125 / 150', price: p, stock: 40 },
-          { name: 'Beat ESP / Scoopy', price: p, stock: 45 },
-          { name: 'All New NMAX / Aerox 155', price: p + 15000, stock: 35 },
-          { name: 'PCX 150 / 160', price: p + 15000, stock: 30 },
+          { name: '13.5 Derajat (Akselerasi Spontan)', price: p, stock: 35 },
+          { name: '13.8 Derajat (All-Round Harian)', price: p, stock: 40 },
+          { name: '14.0 Derajat (Top Speed Jalan Panjang)', price: p, stock: 30 },
         ],
       },
       {
-        name: 'Pilihan Paket',
+        name: 'ISI PAKET',
         options: [
-          { name: 'Standar Upgrade Harian', price: p, stock: 50 },
-          { name: 'Paket Full Bubut Kartel', price: p + 45000, stock: 30 },
+          { name: 'PULLEY ONLY (RUMAH ROLLER + KIPAS)', price: p, stock: 50 },
+          { name: 'PAKET FULL (PULLEY + INTERLOCK + ROLLER)', price: p + 95000, stock: 30 },
         ],
       },
     ];
   }
 
-  // 6. Blok Mesin / Bore Up
-  if (text.includes('blok') || text.includes('bore up') || text.includes('piston')) {
-    const p = basePrice > 0 ? basePrice : 450000;
+  // 10. Mangkok & Kampas Ganda CVT
+  if (text.includes('mangkok') || text.includes('kampas ganda') || text.includes('clutch')) {
+    const p = basePrice > 0 ? basePrice : 165000;
     return [
       {
-        name: 'Ukuran Piston / Bore Up',
+        name: 'MODEL & TIPE',
         options: [
-          { name: '58.5mm (Harian Touring)', price: p, stock: 25 },
-          { name: '62mm (Spek 180cc)', price: p + 50000, stock: 20 },
-          { name: '63mm (Spek 200cc Balap)', price: p + 75000, stock: 15 },
+          { name: 'MANGKOK KARTEL ANTI GREDEK', price: p, stock: 40 },
+          { name: 'MANGKOK LUBANG SPIRAL EXTREME', price: p + 10000, stock: 35 },
+          { name: 'KAMPAS GANDA CARBON KEVLAR', price: p + 30000, stock: 30 },
+          { name: 'FULLSET MANGKOK + KAMPAS GANDA', price: p + 175000, stock: 25 },
         ],
       },
       {
-        name: 'Tipe Motor',
+        name: 'TIPE MOTOR',
+        options: [
+          { name: 'Vario 125 / 150 / 160 / PCX', price: p, stock: 45 },
+          { name: 'Beat ESP / Street / Scoopy / Genio', price: p, stock: 45 },
+          { name: 'All New NMAX / Aerox 155', price: p, stock: 35 },
+          { name: 'Mio Sporty / Smile / M3', price: p, stock: 30 },
+        ],
+      },
+    ];
+  }
+
+  // 11. Per CVT & Per Sentri
+  if (text.includes('per cvt') || text.includes('per sentri') || text.includes('per kopling')) {
+    const p = basePrice > 0 ? basePrice : 75000;
+    return [
+      {
+        name: 'KEKERASAN RPM',
+        options: [
+          { name: '1000 RPM (Harian Enteng)', price: p, stock: 50 },
+          { name: '1500 RPM (Akselerasi Stop & Go)', price: p, stock: 50 },
+          { name: '2000 RPM (Bore Up / Balap)', price: p + 5000, stock: 40 },
+        ],
+      },
+      {
+        name: 'ISI PAKET',
+        options: [
+          { name: 'PER CVT SAJA', price: p, stock: 50 },
+          { name: 'FULLSET (PER CVT + PER SENTRI 3 PCS)', price: p + 40000, stock: 35 },
+        ],
+      },
+    ];
+  }
+
+  // 12. Velg Racing
+  if (text.includes('velg') || text.includes('pelek') || text.includes('rim')) {
+    const p = basePrice > 0 ? basePrice : 1250000;
+    return [
+      {
+        name: 'UKURAN VELG',
+        options: [
+          { name: 'Ring 14 Lebar 1.40 - 1.60 (Matic)', price: p, stock: 20 },
+          { name: 'Ring 17 Lebar 1.40 - 1.60 (Bebek/Sport)', price: p + 50000, stock: 15 },
+        ],
+      },
+      {
+        name: 'PILIHAN WARNA',
+        options: [
+          { name: 'Matte Gold Series', price: p, stock: 25 },
+          { name: 'Glossy Black Racing', price: p, stock: 25 },
+          { name: 'Candy Orange', price: p, stock: 15 },
+          { name: 'Silver Polish CNC', price: p + 25000, stock: 15 },
+        ],
+      },
+    ];
+  }
+
+  // 13. Blok Silinder / Bore Up
+  if (text.includes('blok') || text.includes('bore up') || text.includes('piston') || text.includes('silinder')) {
+    const p = basePrice > 0 ? basePrice : 450000;
+    return [
+      {
+        name: 'UKURAN PISTON',
+        options: [
+          { name: '58.5 mm (Harian / Touring)', price: p, stock: 25 },
+          { name: '62 mm (Spek 180cc)', price: p + 50000, stock: 20 },
+          { name: '63 mm (Spek 200cc Balap)', price: p + 75000, stock: 15 },
+          { name: '65 mm (Kompetisi FFA)', price: p + 110000, stock: 10 },
+        ],
+      },
+      {
+        name: 'TIPE MOTOR',
         options: [
           { name: 'Vario 125 / 150', price: p, stock: 30 },
           { name: 'Beat FI / Scoopy FI', price: p, stock: 30 },
           { name: 'NMAX / Aerox 155', price: p, stock: 25 },
+          { name: 'Mio Sporty / Smile 5TL', price: p, stock: 20 },
         ],
       },
     ];
   }
 
-  // 7. Generic fallback based on bikeVariants
+  // 14. Generic fallback based on bikeVariants
   const { bikeVariants } = detectBikeCompatibility(title, desc);
   return [
     {

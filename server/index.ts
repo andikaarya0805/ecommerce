@@ -2042,12 +2042,12 @@ app.get('/api/admin/products', authMiddleware, adminMiddleware, async (req: any,
 // Admin Shopee Product Scraper & Import
 app.post('/api/admin/scrape-shopee', authMiddleware, adminMiddleware, async (req: any, res: any) => {
   try {
-    const { url } = req.body || {};
+    const { url, cookie } = req.body || {};
     if (!url) {
       return res.status(400).json({ error: 'URL link produk Shopee wajib disertakan' });
     }
 
-    const scraped = await scrapeShopeeProduct(url);
+    const scraped = await scrapeShopeeProduct(url, cookie);
     res.json({
       success: true,
       product: scraped,
