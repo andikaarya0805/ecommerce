@@ -97,7 +97,7 @@ function StoreFront() {
   const fetchAllData = async () => {
     try {
       const [resProd, resVouch, resCat, resBikes] = await Promise.allSettled([
-        safeFetchJson<Product[]>('/api/products'),
+        safeFetchJson<Product[]>('/api/products?limit=100'),
         safeFetchJson<Voucher[]>('/api/vouchers'),
         safeFetchJson<CategoryItem[]>('/api/categories'),
         safeFetchJson<UserBike[]>('/api/bikes'),
@@ -127,7 +127,7 @@ function StoreFront() {
     fetchAllData();
 
     const handleSync = () => {
-      safeFetchJson<Product[]>('/api/products')
+      safeFetchJson<Product[]>('/api/products?limit=100')
         .then((resProd) => {
           if (Array.isArray(resProd) && resProd.length > 0) {
             setProducts((prev) => (JSON.stringify(prev) === JSON.stringify(resProd) ? prev : resProd));

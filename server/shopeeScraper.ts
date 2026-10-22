@@ -25,7 +25,7 @@ export interface ScrapedShopeeProduct {
 }
 
 // Auto-detect best category from 8 official categories
-function detectCategory(title: string, desc: string): string {
+export function detectCategory(title: string, desc: string): string {
   const text = `${title} ${desc}`.toLowerCase();
 
   if (text.includes('cvt') || text.includes('pulley') || text.includes('roller') || text.includes('v-belt') || text.includes('vbelt') || text.includes('mangkok') || text.includes('per cvt') || text.includes('kampas ganda')) {
@@ -54,7 +54,7 @@ function detectCategory(title: string, desc: string): string {
 }
 
 // Auto-detect compatible motorcycle types
-function detectBikeCompatibility(title: string, desc: string): { bikeCompatibility: string[]; bikeVariants: string[] } {
+export function detectBikeCompatibility(title: string, desc: string): { bikeCompatibility: string[]; bikeVariants: string[] } {
   const text = `${title} ${desc}`.toLowerCase();
   const bikeCompatibility: string[] = [];
   const bikeVariants: string[] = [];

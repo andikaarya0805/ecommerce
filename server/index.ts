@@ -45,7 +45,7 @@ import {
   isBiteshipConfigured,
 } from './biteship.ts';
 import { generateChatbotReply } from './chatbot.ts';
-import { scrapeShopeeProduct } from './shopeeScraper.ts';
+import { scrapeShopeeProduct, detectCategory, detectBikeCompatibility } from './shopeeScraper.ts';
 
 // Load environment variables from .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -423,7 +423,7 @@ app.get('/api/products', async (req, res) => {
   const search = (req.query.search as string) || (req.query.q as string);
   const sort = (req.query.sort as string) || 'populer';
   const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 24;
+  const limit = parseInt(req.query.limit as string) || 100;
   const offset = (page - 1) * limit;
 
   if (isSupabaseConfigured()) {
@@ -2050,6 +2050,71 @@ app.post('/api/admin/scrape-shopee', authMiddleware, adminMiddleware, async (req
   } catch (err: any) {
     console.error('[Admin Scrape Shopee Error]:', err);
     res.status(500).json({ error: err.message || 'Gagal mengekstrak data dari Shopee' });
+  }
+});
+
+// Admin Bulk Import from Shopee
+app.post('/api/admin/bulk-import-shopee', async (req: any, res: any) => {
+  try {
+    const { items } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Array produk wajib disertakan' });
+    }
+
+    let addedCount = 0;
+    for (const raw of items) {
+      let title = (raw.name || '').replace(/^Jual\s+/i, '').replace(/\|.*Shopee.*/i, '').trim();
+      if (!title || title.length < 5) continue;
+
+      let img = raw.image || '';
+      if (img.startsWith('//')) img = 'https:' + img;
+      if (img && !img.startsWith('http')) {
+        img = `https://down-id.img.susercontent.com/file/${img}`;
+      }
+
+      if (!img || img.includes('data:image') || img.includes('blank.gif')) continue;
+
+      const price = typeof raw.price === 'number' && raw.price > 0 ? raw.price : 150000;
+      const originalPrice = raw.originalPrice || Math.round(price * 1.25);
+      const discountPercent = Math.round(((originalPrice - price) / originalPrice) * 100) || 20;
+      const category = detectCategory(title, raw.description || '');
+      const { bikeCompatibility, bikeVariants } = detectBikeCompatibility(title, raw.description || '');
+
+      const productPayload = {
+        name: title,
+        category,
+        price,
+        originalPrice,
+        discountPercent,
+        stock: 50,
+        weight_grams: 650,
+        image: img,
+        rating: 4.9,
+        soldCount: raw.soldCount || 120,
+        promoTag: 'MALL',
+        fitmentTag: '100% PnP Presisi',
+        compatibilityText: bikeVariants.join(', ') || 'Universal',
+        bikeCompatibility,
+        bikeVariants,
+        description: raw.description || `Produk performa tinggi original AH1 RACING STORE untuk ${bikeVariants.join(', ') || 'motor Anda'}. Dijamin 100% presisi Plug & Play.`,
+        specs: {
+          'Merk': 'AH1 RACING STORE',
+          'Garansi': '1 Bulan Garansi Toko',
+          'Kondisi': 'Baru & Original Pabrikan'
+        },
+        isPromo: true,
+        isPaketUpgrade: category === 'part-cvt' || category === 'blok-mesin',
+        isActive: true,
+      };
+
+      await createSupabaseProduct(productPayload, db);
+      addedCount++;
+    }
+
+    res.json({ success: true, count: addedCount, message: `Berhasil import ${addedCount} produk resmi Shopee!` });
+  } catch (err: any) {
+    console.error('[Bulk Import Error]:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

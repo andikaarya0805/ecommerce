@@ -17,3 +17,15 @@ coverage/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Scratch & Data
+scripts/ah1*
+scripts/test*
+scripts/clean*
+scripts/collect*
+scripts/get*
+scripts/intercept*
+scripts/seed*
+scripts/*.png
+scripts/*.json
+
