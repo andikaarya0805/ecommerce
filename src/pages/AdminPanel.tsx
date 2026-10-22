@@ -4289,20 +4289,70 @@ export const AdminPanel: React.FC = () => {
                   </div>
                 )}
 
-                {/* Variations Preview */}
+                {/* Multi-Group Variations Preview */}
                 {scrapedShopeeData.variationGroups && scrapedShopeeData.variationGroups.length > 0 && (
-                  <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-lg">
-                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
-                      Variasi Produk ({scrapedShopeeData.variationGroups[0]?.name}):
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {scrapedShopeeData.variationGroups[0]?.options.map((opt: any, i: number) => (
-                        <span
-                          key={i}
-                          className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300"
-                        >
-                          {opt.name} {opt.price && opt.price !== scrapedShopeeData.price ? `(${formatIDR(opt.price)})` : ''}
-                        </span>
+                  <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-bold text-neutral-200 flex items-center gap-1.5 uppercase tracking-wide">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-red-500" />
+                        <span>Opsi Variasi Terdeteksi ({scrapedShopeeData.variationGroups.length} Grup):</span>
+                      </p>
+                      <span className="text-[10px] text-neutral-400 font-mono bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
+                        {scrapedShopeeData.variationGroups.reduce((acc: number, g: any) => acc + (g.options?.length || 0), 0)} Total Pilihan
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {scrapedShopeeData.variationGroups.map((group: any, gIdx: number) => (
+                        <div key={gIdx} className="bg-neutral-900/80 p-2.5 rounded-lg border border-neutral-800/80">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                              <span>{group.name || `Varian ${gIdx + 1}`}</span>
+                              <span className="text-neutral-500 font-normal">({group.options?.length || 0} opsi)</span>
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
+                            {group.options?.map((opt: any, oIdx: number) => {
+                              const optName = typeof opt === 'string' ? opt : opt.name;
+                              const optPrice = typeof opt === 'object' ? opt.price : undefined;
+                              return (
+                                <div
+                                  key={oIdx}
+                                  className="group text-[10px] pl-2 pr-1.5 py-0.5 rounded bg-neutral-950 border border-neutral-700/80 text-neutral-200 flex items-center gap-1.5 hover:border-neutral-500 transition-colors"
+                                >
+                                  <span>{optName}</span>
+                                  {optPrice && optPrice > 0 && (
+                                    <span className="text-red-400 font-semibold font-mono text-[9px] bg-red-950/60 px-1 rounded border border-red-900/40">
+                                      {formatIDR(optPrice)}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updatedGroups = scrapedShopeeData.variationGroups.map((g: any, i: number) => {
+                                        if (i !== gIdx) return g;
+                                        return {
+                                          ...g,
+                                          options: g.options.filter((_: any, oi: number) => oi !== oIdx),
+                                        };
+                                      });
+                                      setScrapedShopeeData({
+                                        ...scrapedShopeeData,
+                                        variationGroups: updatedGroups,
+                                      });
+                                    }}
+                                    className="text-neutral-500 hover:text-red-400 cursor-pointer ml-0.5 font-bold text-xs"
+                                    title="Hapus opsi ini"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>

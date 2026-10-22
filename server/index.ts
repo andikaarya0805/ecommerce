@@ -45,7 +45,12 @@ import {
   isBiteshipConfigured,
 } from './biteship.ts';
 import { generateChatbotReply } from './chatbot.ts';
-import { scrapeShopeeProduct, detectCategory, detectBikeCompatibility } from './shopeeScraper.ts';
+import {
+  scrapeShopeeProduct,
+  detectCategory,
+  detectBikeCompatibility,
+  generateIntelligentVariations,
+} from './shopeeScraper.ts';
 
 // Load environment variables from .env
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -2105,6 +2110,10 @@ app.post('/api/admin/bulk-import-shopee', async (req: any, res: any) => {
         isPromo: true,
         isPaketUpgrade: category === 'part-cvt' || category === 'blok-mesin',
         isActive: true,
+        variationGroups:
+          raw.variationGroups && Array.isArray(raw.variationGroups) && raw.variationGroups.length > 0
+            ? raw.variationGroups
+            : generateIntelligentVariations(title, raw.description || '', price),
       };
 
       await createSupabaseProduct(productPayload, db);

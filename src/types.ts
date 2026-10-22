@@ -15,6 +15,7 @@ export interface ProductVariationOption {
   price?: number;
   priceModifier?: number;
   stock?: number;
+  image?: string;
 }
 
 export interface ProductVariationGroup {
