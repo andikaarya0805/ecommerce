@@ -322,10 +322,35 @@ if (!process.env.VERCEL) {
 // PUBLIC CATALOG & STOREFRONT ENDPOINTS
 // =====================================================================
 
-// Get all categories
+// Get all categories with dynamic product counts and top-selling image
 app.get('/api/categories', (req, res) => {
-  const categories = db.prepare('SELECT * FROM categories').all();
-  res.json(categories);
+  try {
+    const categories = db.prepare('SELECT * FROM categories').all();
+    const products = db.prepare('SELECT id, name, category, soldCount, image FROM products WHERE is_active = 1').all() as any[];
+
+    const enriched = categories.map((c: any) => {
+      const catProds = products.filter((p: any) => {
+        const cat = (p.category || '').toLowerCase();
+        return cat === (c.categoryFilter || '').toLowerCase() || cat === c.id;
+      });
+      const topProd = catProds.length > 0
+        ? [...catProds].sort((a: any, b: any) => (b.soldCount || 0) - (a.soldCount || 0))[0]
+        : null;
+      const totalSold = catProds.reduce((sum: number, p: any) => sum + (p.soldCount || 0), 0);
+
+      return {
+        ...c,
+        count: catProds.length,
+        image: topProd?.image || null,
+        totalSold,
+      };
+    });
+
+    res.json(enriched);
+  } catch (err: any) {
+    const categories = db.prepare('SELECT * FROM categories').all();
+    res.json(categories);
+  }
 });
 
 // Get all active vouchers

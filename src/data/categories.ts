@@ -91,7 +91,7 @@ export const CATEGORY_ITEMS: CategoryItem[] = OFFICIAL_CATEGORIES.map((c) => ({
   subtitle: c.tagline,
   categoryFilter: c.slug,
   badgeText: c.badge,
-  count: 12,
+  count: 0,
   icon: c.icon,
   tagline: c.tagline,
 }));

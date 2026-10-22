@@ -78,7 +78,7 @@ var CATEGORY_ITEMS = OFFICIAL_CATEGORIES.map((c) => ({
   subtitle: c.tagline,
   categoryFilter: c.slug,
   badgeText: c.badge,
-  count: 12,
+  count: 0,
   icon: c.icon,
   tagline: c.tagline
 }));
@@ -475,8 +475,8 @@ var INITIAL_PRODUCTS = [
     discountPercent: 21,
     promoTag: "Best Seller",
     rating: 5,
-    soldCount: 412,
-    image: "/images/racing_rear_shock_1789096521276.jpg",
+    soldCount: 785,
+    image: "/images/velg_racing_alloy.jpg",
     description: "Velg aluminium alloy casting berkekuatan tinggi dengan bobot super enteng. Pilihan velg juara balap matic road race Indonesia.",
     specs: {
       Ukuran: "Depan 14x1.40 & Belakang 14x1.60",
@@ -501,7 +501,7 @@ var INITIAL_PRODUCTS = [
     promoTag: "Paket Hemat",
     rating: 4.8,
     soldCount: 1530,
-    image: "/images/ktc_master_rem_1789096462600.jpg",
+    image: "/images/accesories_racing_cnc.jpg",
     description: "Aksesoris ganteng spion jalu stang aluminium CNC kaca biru anti silau dipadukan dengan handgrip Domino bahan karet empuk anti licin.",
     specs: {
       Material: "Aluminium Billet CNC + Blue Tinted Glass",
@@ -511,6 +511,32 @@ var INITIAL_PRODUCTS = [
     isPromo: false,
     isPaketUpgrade: false,
     stock: 50,
+    originCity: "Jakarta Timur",
+    bikeCompatibility: ["vario-pcx", "nmax-aerox", "beat-scoopy", "mio-series", "sport-bebek"]
+  },
+  {
+    id: "prod-oli-racing-gp",
+    name: "Paket Oli Mesin GP 4T 10W-50 Ester Synthetic + Busi Laser Iridium NGK",
+    category: "lain-lain",
+    compatibilityText: "Universal Motor Matic & Bebas Gesekan Suhu Tinggi",
+    fitmentTag: "Plug & Play (PnP)",
+    price: 165e3,
+    originalPrice: 22e4,
+    discountPercent: 25,
+    promoTag: "Best Seller",
+    rating: 5,
+    soldCount: 2150,
+    image: "/images/oli_racing_parts.jpg",
+    description: "Pelumas mesin kompetisi 100% full synthetic formula Ester Tech dengan sertifikasi API SN / JASO MA2. Menjaga kestabilan suhu mesin bore up dan tarikan mesin tetap enteng putaran tinggi.",
+    specs: {
+      Viskositas: "10W-50 Full Synthetic Ester",
+      Volume: "1 Liter (1000ml)",
+      Busi: "NGK Laser Iridium Long Thread",
+      Standar: "API SN / JASO MA2"
+    },
+    isPromo: true,
+    isPaketUpgrade: false,
+    stock: 60,
     originCity: "Jakarta Timur",
     bikeCompatibility: ["vario-pcx", "nmax-aerox", "beat-scoopy", "mio-series", "sport-bebek"]
   }
@@ -3100,8 +3126,28 @@ if (!process.env.VERCEL) {
   setInterval(checkAndCancelExpiredOrders, 3e4);
 }
 app.get("/api/categories", (req, res) => {
-  const categories = db_default.prepare("SELECT * FROM categories").all();
-  res.json(categories);
+  try {
+    const categories = db_default.prepare("SELECT * FROM categories").all();
+    const products = db_default.prepare("SELECT id, name, category, soldCount, image FROM products WHERE is_active = 1").all();
+    const enriched = categories.map((c) => {
+      const catProds = products.filter((p) => {
+        const cat = (p.category || "").toLowerCase();
+        return cat === (c.categoryFilter || "").toLowerCase() || cat === c.id;
+      });
+      const topProd = catProds.length > 0 ? [...catProds].sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))[0] : null;
+      const totalSold = catProds.reduce((sum, p) => sum + (p.soldCount || 0), 0);
+      return {
+        ...c,
+        count: catProds.length,
+        image: topProd?.image || null,
+        totalSold
+      };
+    });
+    res.json(enriched);
+  } catch (err) {
+    const categories = db_default.prepare("SELECT * FROM categories").all();
+    res.json(categories);
+  }
 });
 app.get("/api/vouchers", (req, res) => {
   const vouchers = db_default.prepare("SELECT * FROM vouchers WHERE is_active = 1").all().map((v) => ({

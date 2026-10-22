@@ -328,6 +328,7 @@ function StoreFront() {
         {activeTab === 'kategori' && !searchQuery.trim() ? (
           <VerticalCategoryList
             categories={categories}
+            products={products}
             onSelectCategoryFilter={handleSelectCategoryFromList}
           />
         ) : (

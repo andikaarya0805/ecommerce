@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY DEFAULT ('prod-' || replace(uuid_generate_v4()::text, '-', '')),
   name TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
-  category TEXT NOT NULL CHECK (category IN ('paket-upgrade', 'cvt', 'pengereman', 'kaki-kaki', 'mesin', 'aksesoris')),
+  category TEXT NOT NULL,
   compatibility_text TEXT NOT NULL,
   fitment_tag TEXT NOT NULL DEFAULT 'Plug & Play (PnP)',
   price INTEGER NOT NULL CHECK (price >= 0),
