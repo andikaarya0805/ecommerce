@@ -6,7 +6,8 @@ export type OfficialCategorySlug =
   | 'accesories'
   | 'part-cvt'
   | 'noken-as'
-  | 'lain-lain';
+  | 'lain-lain'
+  | (string & {});
 
 export interface CategoryItem {
   id: string;
@@ -21,7 +22,7 @@ export interface CategoryItem {
 }
 
 export const OFFICIAL_CATEGORIES: {
-  slug: OfficialCategorySlug;
+  slug: string;
   label: string;
   icon: string;
   tagline: string;
@@ -96,24 +97,28 @@ export const CATEGORY_ITEMS: CategoryItem[] = OFFICIAL_CATEGORIES.map((c) => ({
   tagline: c.tagline,
 }));
 
-export function normalizeCategory(cat?: string): OfficialCategorySlug {
+export function normalizeCategory(cat?: string): string {
   if (!cat) return 'part-cvt';
   const c = cat.toLowerCase().trim().replace(/_/g, '-');
-  if (c === 'blok-mesin' || c === 'blok mesin' || c.includes('blok')) return 'blok-mesin';
-  if (c === 'shockbreaker' || c.includes('shock')) return 'shockbreaker';
-  if (c === 'pengereman' || c.includes('rem')) return 'pengereman';
-  if (c === 'velg' || c.includes('rim')) return 'velg';
+  if (c === 'blok-mesin' || c === 'blok mesin' || c === 'blok') return 'blok-mesin';
+  if (c === 'shockbreaker' || c === 'shock') return 'shockbreaker';
+  if (c === 'pengereman' || c === 'rem') return 'pengereman';
+  if (c === 'velg' || c === 'rim') return 'velg';
   if (c === 'accesories' || c === 'accessories' || c === 'aksesoris') return 'accesories';
   if (c === 'part-cvt' || c === 'part cvt' || c === 'cvt' || c === 'paket-upgrade') return 'part-cvt';
-  if (c === 'noken-as' || c === 'noken as' || c.includes('camshaft') || c.includes('noken')) return 'noken-as';
+  if (c === 'noken-as' || c === 'noken as' || c === 'camshaft' || c === 'noken') return 'noken-as';
   if (c === 'lain-lain' || c === 'lain lain' || c === 'lain') return 'lain-lain';
-  if (c.includes('knalpot') || c.includes('mesin')) return 'blok-mesin';
-  if (c.includes('kaki')) return 'shockbreaker';
-  return 'lain-lain';
+  // Preserve custom category slug
+  return c;
 }
 
 export function getCategoryLabel(cat?: string): string {
+  if (!cat) return 'Semua Kategori';
   const norm = normalizeCategory(cat);
   const found = OFFICIAL_CATEGORIES.find((c) => c.slug === norm);
-  return found ? found.label : (cat || 'Lain Lain');
+  if (found) return found.label;
+  return cat
+    .split(/[-_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }

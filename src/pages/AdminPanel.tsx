@@ -42,13 +42,18 @@ import {
   UploadCloud,
   Image as ImageIcon,
   Link2,
-  ArrowDownToLine
+  ArrowDownToLine,
+  Flame,
+  Zap,
+  Disc,
+  PackageCheck,
+  FolderPlus
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
 import { getProductPriceRange } from '../data/productVariations';
 import { toast, confirmModal } from '../context/ToastContext';
-import { OFFICIAL_CATEGORIES, normalizeCategory, getCategoryLabel } from '../data/categories';
+import { OFFICIAL_CATEGORIES, CATEGORY_ITEMS, normalizeCategory, getCategoryLabel } from '../data/categories';
 
 export interface AdminVarOption {
   name: string;
@@ -97,7 +102,14 @@ export const AdminPanel: React.FC = () => {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'orders' | 'products' | 'vouchers' | 'chats'>('orders');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'orders' | 'products' | 'categories' | 'vouchers' | 'chats'>('orders');
+
+  // Categories CMS State
+  const [categories, setCategories] = useState<any[]>([]);
+  const [categorySearch, setCategorySearch] = useState<string>('');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<any | null>(null);
+  const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(false);
 
   // Live Chat & Bot State
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -189,15 +201,17 @@ export const AdminPanel: React.FC = () => {
         setOrders([]);
         setProducts(INITIAL_PRODUCTS);
         setVouchers(INITIAL_VOUCHERS);
+        setCategories(CATEGORY_ITEMS);
         setLoading(false);
         return;
       }
 
-      const [resAnalytics, resOrders, resProducts, resVouchers] = await Promise.allSettled([
+      const [resAnalytics, resOrders, resProducts, resVouchers, resCategories] = await Promise.allSettled([
         safeFetchJson('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` } }),
         safeFetchJson('/api/admin/orders', { headers: { Authorization: `Bearer ${token}` } }),
         safeFetchJson('/api/admin/products', { headers: { Authorization: `Bearer ${token}` } }),
         safeFetchJson('/api/admin/vouchers', { headers: { Authorization: `Bearer ${token}` } }),
+        safeFetchJson('/api/admin/categories', { headers: { Authorization: `Bearer ${token}` } }),
       ]);
 
       if (resAnalytics.status === 'fulfilled' && resAnalytics.value && typeof resAnalytics.value === 'object') {
@@ -232,6 +246,15 @@ export const AdminPanel: React.FC = () => {
         );
       } else {
         setVouchers(INITIAL_VOUCHERS);
+      }
+
+      if (resCategories.status === 'fulfilled' && Array.isArray(resCategories.value)) {
+        const cList = resCategories.value.length > 0 ? resCategories.value : CATEGORY_ITEMS;
+        setCategories((prev) =>
+          JSON.stringify(prev) === JSON.stringify(cList) ? prev : cList
+        );
+      } else {
+        setCategories(CATEGORY_ITEMS);
       }
     } catch (err) {
       console.warn('Admin fetch notice:', err);
@@ -680,7 +703,26 @@ export const AdminPanel: React.FC = () => {
       });
 
       if (res?.success && res.product) {
-        setScrapedShopeeData(res.product);
+        const p = res.product;
+        const bannedKeywords = [
+          'alfamart', 'alfamidi', 'indomaret', 'spaylater', 'shopeepay',
+          'bca', 'mandiri', 'bri', 'bni', 'cimb', 'permata',
+          'payment', 'pembayaran', 'metode', 'bank',
+          'voucher', 'cashback', 'gratis_ongkir', 'ongkir', 'free_shipping',
+          'avatar', 'logo', 'seller', 'rating', 'star', 'badge', 'banner',
+          'mall_badge', 'star_seller', 'guarantee', 'garansi', 'official_store'
+        ];
+        const cleanImages = (p.images || []).filter((imgUrl: string) => {
+          const lower = imgUrl.toLowerCase();
+          return !bannedKeywords.some((k) => lower.includes(k));
+        });
+        const mainImage = cleanImages.includes(p.image) ? p.image : (cleanImages[0] || p.image);
+
+        setScrapedShopeeData({
+          ...p,
+          image: mainImage,
+          images: cleanImages.length > 0 ? cleanImages : [mainImage],
+        });
         toast.success('Produk Berhasil Ditarik!', `Ditemukan: ${res.product.name.slice(0, 35)}...`);
       } else {
         throw new Error(res?.error || 'Gagal mengekstrak data dari Shopee');
@@ -1030,6 +1072,193 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  // Category CMS Handlers
+  const openCreateCategory = () => {
+    setEditingCategory({
+      title: '',
+      subtitle: '',
+      categoryFilter: '',
+      badgeText: 'Official PnP',
+      icon: 'Zap',
+      tagline: '',
+    });
+    setIsCategoryModalOpen(true);
+  };
+
+  const openEditCategory = (c: any) => {
+    setEditingCategory({
+      id: c.id,
+      title: c.label || c.title || '',
+      subtitle: c.subtitle || c.tagline || '',
+      categoryFilter: c.slug || c.categoryFilter || '',
+      badgeText: c.badge || c.badgeText || '',
+      icon: c.icon || 'Sparkles',
+      tagline: c.tagline || c.subtitle || '',
+    });
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory?.title?.trim()) {
+      toast.warning('Nama Kategori Kosong', 'Mohon isi nama kategori produk.');
+      return;
+    }
+
+    try {
+      const isEdit = Boolean(editingCategory?.id);
+      const url = isEdit ? `/api/admin/categories/${editingCategory.id}` : '/api/admin/categories';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await safeFetchJson<any>(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingCategory),
+      });
+
+      if (res?.error) throw new Error(res.error);
+
+      toast.success(
+        isEdit ? 'Kategori Diperbarui' : 'Kategori Berhasil Dibuat',
+        `Kategori "${editingCategory.title}" telah tersimpan dan siap digunakan.`
+      );
+      setIsCategoryModalOpen(false);
+      setEditingCategory(null);
+      fetchAllAdminData();
+    } catch (err: any) {
+      toast.error('Gagal Menyimpan Kategori', err.message || 'Terjadi kesalahan sistem.');
+    }
+  };
+
+  const handleDeleteCategory = async (cat: any) => {
+    const count = cat.count || 0;
+    const confirmed = await confirmModal({
+      title: `Hapus Kategori "${cat.label || cat.title}"`,
+      message:
+        count > 0
+          ? `Kategori ini memiliki ${count} produk terdaftar. Tetap ingin menghapusnya? Produk yang ada tidak akan hilang namun tidak lagi dikelompokkan ke kategori ini.`
+          : `Hapus kategori "${cat.label || cat.title}" dari katalog toko?`,
+      confirmText: 'Ya, Hapus Kategori',
+      cancelText: 'Batal',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      const catId = cat.id || `cat-${cat.slug}`;
+      const res = await safeFetchJson<any>(`/api/admin/categories/${catId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res?.error) throw new Error(res.error);
+
+      toast.success('Kategori Dihapus', `Kategori "${cat.label || cat.title}" berhasil dihapus.`);
+      fetchAllAdminData();
+    } catch (err: any) {
+      toast.error('Gagal Menghapus Kategori', err.message || 'Terjadi kesalahan sistem.');
+    }
+  };
+
+  const renderCategoryIcon = (iconName?: string, className: string = 'w-5 h-5') => {
+    switch ((iconName || '').toLowerCase()) {
+      case 'flame':
+        return <Flame className={className} />;
+      case 'zap':
+        return <Zap className={className} />;
+      case 'shieldcheck':
+      case 'shield':
+        return <ShieldCheck className={className} />;
+      case 'disc':
+        return <Disc className={className} />;
+      case 'packagecheck':
+        return <PackageCheck className={className} />;
+      case 'tag':
+        return <Tag className={className} />;
+      case 'shoppingbag':
+        return <ShoppingBag className={className} />;
+      case 'layers':
+        return <Layers className={className} />;
+      case 'truck':
+        return <Truck className={className} />;
+      case 'clock':
+        return <Clock className={className} />;
+      default:
+        return <Sparkles className={className} />;
+    }
+  };
+
+  // Dynamic Categories aggregation
+  const allCategoryOptions = React.useMemo(() => {
+    const map = new Map<string, { id?: string; slug: string; label: string; count: number; icon: string; badge: string; subtitle: string; tagline: string }>();
+
+    for (const c of categories) {
+      const slug = (c.categoryFilter || c.slug || c.id?.replace(/^cat-/, '') || '').toLowerCase().trim();
+      if (!slug) continue;
+      map.set(slug, {
+        id: c.id,
+        slug,
+        label: c.title || getCategoryLabel(slug),
+        count: c.count ?? products.filter((p) => (p.category || '').toLowerCase() === slug || normalizeCategory(p.category) === slug).length,
+        icon: c.icon || 'Sparkles',
+        badge: c.badgeText || c.badge || 'Official',
+        subtitle: c.subtitle || '',
+        tagline: c.tagline || c.subtitle || '',
+      });
+    }
+
+    for (const oc of OFFICIAL_CATEGORIES) {
+      const slug = oc.slug.toLowerCase().trim();
+      if (!map.has(slug)) {
+        map.set(slug, {
+          id: `cat-${slug}`,
+          slug,
+          label: oc.label,
+          count: products.filter((p) => normalizeCategory(p.category) === slug).length,
+          icon: oc.icon,
+          badge: oc.badge,
+          subtitle: oc.tagline,
+          tagline: oc.tagline,
+        });
+      }
+    }
+
+    for (const p of products) {
+      const pCat = (p.category || '').trim();
+      const pCatLower = pCat.toLowerCase();
+      if (pCat && !map.has(pCatLower) && !map.has(normalizeCategory(pCat).toLowerCase())) {
+        const slug = pCatLower.replace(/[^a-z0-9]+/g, '-');
+        map.set(slug, {
+          id: `cat-${slug}`,
+          slug: pCat,
+          label: getCategoryLabel(pCat),
+          count: products.filter((prod) => (prod.category || '').toLowerCase() === pCatLower).length,
+          icon: 'Tag',
+          badge: 'Kustom',
+          subtitle: `Koleksi part ${pCat}`,
+          tagline: `Koleksi part ${pCat}`,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [categories, products]);
+
+  const filteredCategories = allCategoryOptions.filter((c) => {
+    if (!categorySearch.trim()) return true;
+    const q = categorySearch.toLowerCase();
+    return (
+      c.label.toLowerCase().includes(q) ||
+      c.slug.toLowerCase().includes(q) ||
+      (c.badge && c.badge.toLowerCase().includes(q)) ||
+      (c.subtitle && c.subtitle.toLowerCase().includes(q)) ||
+      (c.tagline && c.tagline.toLowerCase().includes(q))
+    );
+  });
+
   // Filtered Orders
   const filteredOrders = orders.filter((o) => {
     const matchStatus = orderStatusFilter === 'ALL' || o.status === orderStatusFilter;
@@ -1044,7 +1273,10 @@ export const AdminPanel: React.FC = () => {
   // Filtered Products
   const filteredProducts = products.filter((p) => {
     const matchCategory =
-      productCategoryFilter === 'ALL' || normalizeCategory(p.category) === productCategoryFilter;
+      productCategoryFilter === 'ALL' ||
+      p.category === productCategoryFilter ||
+      p.category?.toLowerCase() === productCategoryFilter.toLowerCase() ||
+      normalizeCategory(p.category) === productCategoryFilter;
     const matchSearch =
       !productSearch.trim() ||
       p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
@@ -1092,6 +1324,15 @@ export const AdminPanel: React.FC = () => {
                 }`}
               >
                 Kelola Produk (CMS)
+              </button>
+              <button
+                onClick={() => setActiveTab('categories')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === 'categories' ? 'bg-[#E50914] text-white' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Kelola Kategori</span>
               </button>
               <button
                 onClick={() => setActiveTab('vouchers')}
@@ -1151,6 +1392,7 @@ export const AdminPanel: React.FC = () => {
             { id: 'orders', label: 'Pesanan' },
             { id: 'analytics', label: 'Analitik' },
             { id: 'products', label: 'Produk' },
+            { id: 'categories', label: 'Kategori' },
             { id: 'vouchers', label: 'Voucer' },
             {
               id: 'chats',
@@ -1483,10 +1725,10 @@ export const AdminPanel: React.FC = () => {
                   onChange={(e) => setProductCategoryFilter(e.target.value)}
                   className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-xs text-white font-medium focus:outline-none focus:border-[#E50914]"
                 >
-                  <option value="ALL">Semua Kategori (8)</option>
-                  {OFFICIAL_CATEGORIES.map((c) => (
+                  <option value="ALL">Semua Kategori ({products.length})</option>
+                  {allCategoryOptions.map((c) => (
                     <option key={c.slug} value={c.slug}>
-                      {c.label}
+                      {c.label} ({c.count})
                     </option>
                   ))}
                 </select>
@@ -1669,6 +1911,190 @@ export const AdminPanel: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB: CATEGORY MANAGEMENT (CMS)                                */}
+        {/* ============================================================== */}
+        {activeTab === 'categories' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
+            {/* Top Toolbar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#141414] border border-neutral-800 p-4 rounded-2xl shadow-lg">
+              <div>
+                <h3 className="font-racing font-bold text-base text-white uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#E50914]" />
+                  <span>Manajemen Kategori Part (CMS)</span>
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Kelola kategori katalog, buat kategori baru sesuka hati, dan atur badge promo part racing.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-[200px]">
+                  <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari kategori, slug..."
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-xs text-white focus:outline-none focus:border-[#E50914]"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={openCreateCategory}
+                  className="px-4 py-2 bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-md shadow-red-950/40 cursor-pointer transition-colors whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Kategori Baru</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Cards for Categories */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-4 rounded-2xl bg-[#141414] border border-neutral-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                    Total Kategori Aktif
+                  </span>
+                  <h4 className="font-racing font-bold text-2xl text-white mt-0.5">
+                    {allCategoryOptions.length} Kategori
+                  </h4>
+                  <span className="text-[10px] text-neutral-500">Tersedia di navigasi katalog</span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-[#E50914]">
+                  <Layers className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#141414] border border-neutral-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                    Part Terdaftar
+                  </span>
+                  <h4 className="font-racing font-bold text-2xl text-emerald-400 mt-0.5">
+                    {products.length} Part
+                  </h4>
+                  <span className="text-[10px] text-neutral-500">Total part di katalog toko</span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-800/80 flex items-center justify-center text-emerald-400">
+                  <Package className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#141414] border border-neutral-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+                    Kategori Terpopuler
+                  </span>
+                  <h4 className="font-racing font-bold text-lg text-amber-400 mt-0.5 truncate max-w-[190px]">
+                    {(() => {
+                      const top = [...allCategoryOptions].sort((a, b) => (b.count || 0) - (a.count || 0))[0];
+                      return top ? top.label : '-';
+                    })()}
+                  </h4>
+                  <span className="text-[10px] text-neutral-500">
+                    {(() => {
+                      const top = [...allCategoryOptions].sort((a, b) => (b.count || 0) - (a.count || 0))[0];
+                      return top ? `${top.count} Part Tersedia` : '';
+                    })()}
+                  </span>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-950/60 border border-amber-800/80 flex items-center justify-center text-amber-400">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+              </div>
+            </div>
+
+            {/* Categories Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCategories.length === 0 ? (
+                <div className="col-span-full p-8 text-center bg-[#141414] border border-neutral-800 rounded-2xl text-neutral-500 text-xs">
+                  Tidak ada kategori yang cocok dengan pencarian "{categorySearch}".
+                </div>
+              ) : (
+                filteredCategories.map((c) => (
+                  <div
+                    key={c.slug}
+                    className="bg-[#141414] border border-neutral-800 hover:border-neutral-700 rounded-2xl p-4.5 flex flex-col justify-between space-y-3.5 transition-all shadow-md group relative"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-neutral-900 border border-neutral-800 group-hover:border-[#E50914]/50 flex items-center justify-center text-[#E50914] transition-colors shadow-inner">
+                            {renderCategoryIcon(c.icon, 'w-5 h-5')}
+                          </div>
+                          <div>
+                            <h4 className="font-racing font-bold text-white text-sm tracking-wide group-hover:text-red-400 transition-colors">
+                              {c.label}
+                            </h4>
+                            <span className="font-mono text-[10px] text-neutral-500 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                              slug: {c.slug}
+                            </span>
+                          </div>
+                        </div>
+
+                        {c.badge && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-950/70 border border-red-800 text-red-300 shrink-0">
+                            {c.badge}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-neutral-400 line-clamp-2 leading-relaxed">
+                        {c.subtitle || c.tagline || 'Part balap dan harian kualitas terbaik.'}
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-neutral-800/80 flex items-center justify-between">
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-racing font-bold text-sm text-white">
+                          {c.count}
+                        </span>
+                        <span className="text-[10px] text-neutral-500">Part di Katalog</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductCategoryFilter(c.slug);
+                            setActiveTab('products');
+                          }}
+                          className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                          title="Lihat semua produk dalam kategori ini"
+                        >
+                          <Eye className="w-3 h-3 text-[#E50914]" />
+                          <span>Produk</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openEditCategory(c)}
+                          className="p-1.5 rounded-lg bg-neutral-800 hover:bg-amber-600/30 text-neutral-300 hover:text-amber-300 transition-colors"
+                          title="Edit Kategori"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(c)}
+                          className="p-1.5 rounded-lg bg-neutral-800 hover:bg-red-950/80 text-neutral-400 hover:text-red-400 transition-colors"
+                          title="Hapus Kategori"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -2482,18 +2908,53 @@ export const AdminPanel: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-neutral-300 font-bold mb-1">Kategori</label>
-                    <select
-                      value={normalizeCategory(editingProduct.category)}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
-                    >
-                      {OFFICIAL_CATEGORIES.map((cat) => (
-                        <option key={cat.slug} value={cat.slug}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-neutral-300 font-bold">
+                        Kategori Part <span className="text-[#E50914]">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomCategoryMode(!isCustomCategoryMode)}
+                        className="text-[10px] text-[#E50914] hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
+                      >
+                        {isCustomCategoryMode ? '← Pilih dari List' : '+ Input Kategori Kustom'}
+                      </button>
+                    </div>
+
+                    {isCustomCategoryMode ? (
+                      <div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ketik slug/nama kategori (cth: knalpot-racing)"
+                          value={editingProduct.category || ''}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-black border border-amber-600/80 text-white focus:outline-none focus:border-[#E50914]"
+                        />
+                        <span className="text-[10px] text-amber-400 mt-1 block">
+                          Tip: Kategori baru ini akan langsung aktif di katalog toko.
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        value={editingProduct.category || 'part-cvt'}
+                        onChange={(e) => {
+                          if (e.target.value === '__CUSTOM__') {
+                            setIsCustomCategoryMode(true);
+                          } else {
+                            setEditingProduct({ ...editingProduct, category: e.target.value });
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                      >
+                        {allCategoryOptions.map((cat) => (
+                          <option key={cat.slug} value={cat.slug}>
+                            {cat.label} ({cat.slug})
+                          </option>
+                        ))}
+                        <option value="__CUSTOM__">+ Buat Kategori Kustom Baru...</option>
+                      </select>
+                    )}
                   </div>
 
                   <div>
@@ -3771,27 +4232,59 @@ export const AdminPanel: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Gallery Images Strip */}
-                {scrapedShopeeData.images && scrapedShopeeData.images.length > 1 && (
+                {/* Gallery Images Strip with individual delete buttons and main image selection */}
+                {scrapedShopeeData.images && scrapedShopeeData.images.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5">
-                      Galeri Foto ({scrapedShopeeData.images.length} Gambar Ditemukan):
-                    </p>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {scrapedShopeeData.images.map((imgUrl: string, idx: number) => (
-                        <img
-                          key={idx}
-                          src={imgUrl}
-                          alt={`thumb-${idx}`}
-                          referrerPolicy="no-referrer"
-                          onClick={() => setScrapedShopeeData({ ...scrapedShopeeData, image: imgUrl })}
-                          className={`w-14 h-14 rounded-lg object-cover bg-black flex-shrink-0 cursor-pointer border transition-all ${
-                            scrapedShopeeData.image === imgUrl
-                              ? 'border-[#EE4D2D] ring-2 ring-[#EE4D2D]/50 scale-105'
-                              : 'border-neutral-800 opacity-70 hover:opacity-100'
-                          }`}
-                        />
-                      ))}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                        Foto Produk ({scrapedShopeeData.images.length} Gambar):
+                      </p>
+                      <span className="text-[10px] text-neutral-500">
+                        Klik foto untuk jadikan foto utama, klik × untuk buang banner iklan
+                      </span>
+                    </div>
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 pt-1 no-scrollbar">
+                      {scrapedShopeeData.images.map((imgUrl: string, idx: number) => {
+                        const isMain = scrapedShopeeData.image === imgUrl;
+                        return (
+                          <div key={idx} className="relative group shrink-0">
+                            <img
+                              src={imgUrl}
+                              alt={`thumb-${idx}`}
+                              referrerPolicy="no-referrer"
+                              onClick={() => setScrapedShopeeData({ ...scrapedShopeeData, image: imgUrl })}
+                              className={`w-16 h-16 rounded-xl object-cover bg-black cursor-pointer border transition-all ${
+                                isMain
+                                  ? 'border-[#EE4D2D] ring-2 ring-[#EE4D2D]/60 scale-105'
+                                  : 'border-neutral-800 opacity-75 hover:opacity-100 hover:border-neutral-600'
+                              }`}
+                            />
+                            {isMain && (
+                              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#EE4D2D] text-white text-[8px] font-black px-1.5 py-0.2 rounded-full shadow tracking-wider uppercase pointer-events-none">
+                                UTAMA
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newImages = scrapedShopeeData.images.filter((_: any, i: number) => i !== idx);
+                                const newMain = isMain ? (newImages[0] || '') : scrapedShopeeData.image;
+                                setScrapedShopeeData({
+                                  ...scrapedShopeeData,
+                                  images: newImages,
+                                  image: newMain,
+                                });
+                                toast.info('Foto Dihapus', 'Foto iklan/banner berhasil disingkirkan.');
+                              }}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-xs font-bold shadow-md opacity-80 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
+                              title="Hapus foto ini (misal logo / banner iklan)"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -3856,6 +4349,184 @@ export const AdminPanel: React.FC = () => {
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: TAMBAH / EDIT KATEGORI (CMS)                            */}
+      {/* ============================================================== */}
+      {isCategoryModalOpen && editingCategory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-[#141414] border border-neutral-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-left my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-800 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-[#E50914] flex items-center justify-center text-white shadow-md shadow-red-950/50">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-racing font-bold text-white text-base tracking-wide uppercase">
+                    {editingCategory.id ? 'Edit Kategori Part' : 'Tambah Kategori Baru'}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Atur nama, slug filter, badge promo, dan deskripsi kategori.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryModalOpen(false);
+                  setEditingCategory(null);
+                }}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategory} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-neutral-300 font-bold mb-1">
+                  Nama Kategori <span className="text-[#E50914]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Knalpot & Exhaust Racing"
+                  value={editingCategory.title || ''}
+                  onChange={(e) => {
+                    const title = e.target.value;
+                    const autoSlug = !editingCategory.id && !editingCategory.categoryFilterManual
+                      ? title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+                      : editingCategory.categoryFilter;
+                    setEditingCategory({
+                      ...editingCategory,
+                      title,
+                      categoryFilter: autoSlug,
+                    });
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-neutral-300 font-bold mb-1">
+                    Slug / Kode Filter <span className="text-[#E50914]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: knalpot-exhaust"
+                    value={editingCategory.categoryFilter || ''}
+                    onChange={(e) =>
+                      setEditingCategory({
+                        ...editingCategory,
+                        categoryFilter: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                        categoryFilterManual: true,
+                      })
+                    }
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 font-mono text-white focus:outline-none focus:border-[#E50914]"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    Digunakan untuk filter produk & URL
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-neutral-300 font-bold mb-1">
+                    Badge Promo / Label
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Power Max, Official PnP"
+                    value={editingCategory.badgeText || ''}
+                    onChange={(e) =>
+                      setEditingCategory({ ...editingCategory, badgeText: e.target.value })
+                    }
+                    className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    Label kecil di sudut kategori
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-neutral-300 font-bold mb-1">
+                  Pilihan Icon Kategori
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[
+                    { id: 'Zap', label: 'Petir' },
+                    { id: 'Flame', label: 'Api' },
+                    { id: 'ShieldCheck', label: 'Shield' },
+                    { id: 'Disc', label: 'Piringan' },
+                    { id: 'PackageCheck', label: 'Paket' },
+                    { id: 'Tag', label: 'Tag' },
+                    { id: 'Layers', label: 'Layers' },
+                    { id: 'ShoppingBag', label: 'Toko' },
+                    { id: 'Truck', label: 'Truk' },
+                    { id: 'Sparkles', label: 'Sparkles' },
+                  ].map((ic) => (
+                    <button
+                      type="button"
+                      key={ic.id}
+                      onClick={() => setEditingCategory({ ...editingCategory, icon: ic.id })}
+                      className={`p-2 rounded-xl flex flex-col items-center gap-1 border transition-all cursor-pointer ${
+                        (editingCategory.icon || 'Sparkles').toLowerCase() === ic.id.toLowerCase()
+                          ? 'bg-[#E50914]/20 border-[#E50914] text-[#E50914] ring-1 ring-[#E50914]/50'
+                          : 'bg-black border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                      }`}
+                    >
+                      {renderCategoryIcon(ic.id, 'w-4 h-4')}
+                      <span className="text-[9px] font-medium">{ic.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-neutral-300 font-bold mb-1">
+                  Deskripsi / Subtitle Kategori
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Deskripsi singkat produk yang ada dalam kategori ini..."
+                  value={editingCategory.subtitle || editingCategory.tagline || ''}
+                  onChange={(e) =>
+                    setEditingCategory({
+                      ...editingCategory,
+                      subtitle: e.target.value,
+                      tagline: e.target.value,
+                    })
+                  }
+                  className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914] resize-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-neutral-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCategoryModalOpen(false);
+                    setEditingCategory(null);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-red-950/50 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Kategori</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

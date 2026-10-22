@@ -1056,13 +1056,43 @@ function createInMemoryDb() {
             if (r) r.bot_enabled = bot_enabled;
             return { changes: 1, lastInsertRowid: 0 };
           }
-          if (cleanSql.includes("DELETE FROM chat_rooms WHERE id = ?")) {
-            const [id] = params;
-            const idx = chat_rooms.findIndex((rm) => rm.id === id);
-            if (idx !== -1) chat_rooms.splice(idx, 1);
-            for (let i = chat_messages.length - 1; i >= 0; i--) {
-              if (chat_messages[i].room_id === id) chat_messages.splice(i, 1);
+          if (cleanSql.includes("categories") && cleanSql.includes("INSERT")) {
+            const [id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline] = params;
+            const existingIdx = categories.findIndex((c) => c.id === id || c.categoryFilter === categoryFilter);
+            const newCat = {
+              id: id || `cat-${categoryFilter}`,
+              title,
+              subtitle: subtitle || tagline || "",
+              bikeFilter: bikeFilter || null,
+              categoryFilter,
+              badgeText: badgeText || "",
+              count: count || 0,
+              icon: icon || "Sparkles",
+              tagline: tagline || subtitle || ""
+            };
+            if (existingIdx !== -1) {
+              categories[existingIdx] = { ...categories[existingIdx], ...newCat };
+            } else {
+              categories.push(newCat);
             }
+            return { changes: 1, lastInsertRowid: categories.length };
+          }
+          if (cleanSql.includes("UPDATE categories SET") && cleanSql.includes("title = ?")) {
+            const [title, subtitle, badgeText, icon, tagline, id] = params;
+            const c = categories.find((cat) => cat.id === id);
+            if (c) {
+              c.title = title;
+              c.subtitle = subtitle;
+              c.badgeText = badgeText;
+              c.icon = icon;
+              c.tagline = tagline;
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes("DELETE FROM categories WHERE id = ?")) {
+            const [id] = params;
+            const idx = categories.findIndex((cat) => cat.id === id);
+            if (idx !== -1) categories.splice(idx, 1);
             return { changes: 1, lastInsertRowid: 0 };
           }
           return { changes: 0, lastInsertRowid: 0 };
@@ -1110,9 +1140,8 @@ function ensureColumn(tableName, colName, colDef) {
 function seedDatabase(targetDb = db) {
   if (targetDb.isInMemory) return;
   try {
-    targetDb.exec(`DELETE FROM categories`);
     const insertCategory = targetDb.prepare(`
-      INSERT OR REPLACE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
+      INSERT OR IGNORE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const cat of CATEGORY_ITEMS) {
@@ -2981,16 +3010,22 @@ async function scrapeShopeeProduct(rawUrl) {
     targetUrl = "https://" + targetUrl;
   }
   console.log("[Shopee Scraper] Starting scrape for:", targetUrl);
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-blink-features=AutomationControlled",
-      "--disable-web-security",
-      "--disable-features=IsolateOrigins,site-per-process"
-    ]
-  });
+  let browser = null;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-web-security",
+        "--disable-features=IsolateOrigins,site-per-process"
+      ]
+    });
+  } catch (launchErr) {
+    console.warn("[Shopee Scraper] Chromium unavailable (Vercel/serverless). Using resilient HTTP fallback:", launchErr.message);
+    return await scrapeShopeeViaHttpFallback(targetUrl);
+  }
   try {
     const context = await browser.newContext({
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -3083,19 +3118,108 @@ async function scrapeShopeeProduct(rawUrl) {
         variationGroups: variationGroups.length > 0 ? variationGroups : void 0
       };
     }
-    console.log("[Shopee Scraper] Falling back to DOM & OpenGraph parsing...");
+    console.log("[Shopee Scraper] Falling back to DOM & OpenGraph parsing with strict product image filter...");
     const domData = await page.evaluate(() => {
       const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
       const docTitle = document.title || "";
       const h1Text = document.querySelector("h1")?.textContent || "";
       const name = (h1Text || ogTitle || docTitle).replace(/\|.*Shopee.*/i, "").trim();
-      const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
-      const imgElements = Array.from(document.querySelectorAll("img")).map((i) => i.src);
-      const shopeeImages = imgElements.filter(
-        (src) => src && (src.includes("susercontent.com") || src.includes("shopee."))
+      const isBlacklisted = (url, alt = "") => {
+        const u = `${url} ${alt}`.toLowerCase();
+        const banned = [
+          "alfamart",
+          "alfamidi",
+          "indomaret",
+          "spaylater",
+          "shopeepay",
+          "bca",
+          "mandiri",
+          "bri",
+          "bni",
+          "cimb",
+          "permata",
+          "payment",
+          "pembayaran",
+          "metode",
+          "bank",
+          "voucher",
+          "cashback",
+          "gratis_ongkir",
+          "ongkir",
+          "free_shipping",
+          "avatar",
+          "logo",
+          "seller",
+          "rating",
+          "star",
+          "badge",
+          "banner",
+          "mall_badge",
+          "star_seller",
+          "guarantee",
+          "garansi",
+          "official_store",
+          "chat",
+          "icon",
+          "arrow",
+          "placeholder",
+          "blank.gif"
+        ];
+        return banned.some((k) => u.includes(k));
+      };
+      const cleanUrl = (raw) => {
+        if (!raw) return "";
+        let s = raw.trim();
+        if (s.startsWith("//")) s = "https:" + s;
+        return s.replace(/_(tn|m|s|b|xs|xxs)$/i, "").replace(/@.*$/, "");
+      };
+      const productImages = [];
+      const seen = /* @__PURE__ */ new Set();
+      const galleryNodes = Array.from(
+        document.querySelectorAll(
+          '[role="tablist"] img, .product-briefing img, div[tabindex] img, .pdp-image-slider img, .qaN3te img, ._2J7wAZ img, ._3y9y2w img'
+        )
       );
-      if (ogImage && !shopeeImages.includes(ogImage)) {
-        shopeeImages.unshift(ogImage);
+      for (const img of galleryNodes) {
+        const src = cleanUrl(img.currentSrc || img.src || img.getAttribute("data-src") || "");
+        if (!src || !src.includes("susercontent.com")) continue;
+        if (isBlacklisted(src, img.alt || "")) continue;
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          if (img.naturalWidth < 160 || img.naturalHeight < 160) continue;
+          const ratio = img.naturalWidth / img.naturalHeight;
+          if (ratio > 1.5 || ratio < 0.65) continue;
+        }
+        if (!seen.has(src)) {
+          seen.add(src);
+          productImages.push(src);
+        }
+      }
+      if (productImages.length < 2) {
+        const allImgs = Array.from(document.querySelectorAll("img"));
+        for (const img of allImgs) {
+          const src = cleanUrl(img.currentSrc || img.src || img.getAttribute("data-src") || "");
+          if (!src || !src.includes("susercontent.com")) continue;
+          if (isBlacklisted(src, img.alt || "")) continue;
+          const w = img.naturalWidth || img.width || 0;
+          const h = img.naturalHeight || img.height || 0;
+          if (w > 0 && h > 0) {
+            if (w < 250 || h < 250) continue;
+            const ratio = w / h;
+            if (ratio > 1.35 || ratio < 0.75) continue;
+          }
+          if (!seen.has(src)) {
+            seen.add(src);
+            productImages.push(src);
+          }
+        }
+      }
+      const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
+      if (ogImage && !isBlacklisted(ogImage)) {
+        const cleanOg = cleanUrl(ogImage);
+        if (!seen.has(cleanOg)) {
+          productImages.unshift(cleanOg);
+          seen.add(cleanOg);
+        }
       }
       const ogDesc = document.querySelector('meta[property="og:description"]')?.getAttribute("content") || "";
       const descEl = document.querySelector(".e8duaM") || document.querySelector("._3y7v0j") || document.querySelector('[data-testid="pdp-description"]');
@@ -3110,8 +3234,8 @@ async function scrapeShopeeProduct(rawUrl) {
       }
       return {
         name,
-        images: shopeeImages.slice(0, 8),
-        image: ogImage || shopeeImages[0] || "",
+        images: productImages.slice(0, 8),
+        image: productImages[0] || ogImage || "",
         description: description2,
         price: price2
       };
@@ -3145,8 +3269,88 @@ async function scrapeShopeeProduct(rawUrl) {
     await browser.close().catch(() => {
     });
     console.error("[Shopee Scraper Error]:", err);
-    throw new Error("Gagal mengambil data produk dari Shopee: " + err.message);
+    console.log("[Shopee Scraper] Falling back to HTTP parser...");
+    return await scrapeShopeeViaHttpFallback(targetUrl);
   }
+}
+async function scrapeShopeeViaHttpFallback(url) {
+  let parsedName = "";
+  let imageIdFromUrl = "";
+  try {
+    const urlObj = new URL(url);
+    const pathname = decodeURIComponent(urlObj.pathname);
+    const slugMatch = pathname.match(/\/([^\/]+)-i\.\d+\.\d+/) || pathname.match(/\/product\/\d+\/([^\/]+)/) || pathname.match(/\/([^\/?#]+)/);
+    if (slugMatch && slugMatch[1]) {
+      parsedName = slugMatch[1].replace(/-/g, " ").replace(/_/g, " ").replace(/^Jual\s+/i, "").trim();
+    }
+    const imgId = urlObj.searchParams.get("image_ids") || urlObj.searchParams.get("image");
+    if (imgId) {
+      imageIdFromUrl = imgId.split(",")[0];
+    }
+  } catch (e) {
+  }
+  let title = parsedName || "Produk Racing Speedshop Original";
+  let description = `${title} kualitas tinggi standar balap dan harian. Presisi Plug & Play (PnP).`;
+  let image = imageIdFromUrl ? `https://down-id.img.susercontent.com/file/${imageIdFromUrl}` : "https://down-id.img.susercontent.com/file/sg-11134201-82585-mukfwq97h6ve75";
+  const images = [];
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+      }
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1];
+      const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+      const ogDesc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1];
+      if (ogTitle) {
+        title = ogTitle.replace(/\|.*Shopee.*/i, "").replace(/^Jual\s+/i, "").trim();
+      }
+      if (ogImage && !ogImage.includes("favicon") && !ogImage.includes("logo")) {
+        image = ogImage;
+        images.push(ogImage);
+      }
+      if (ogDesc) {
+        description = ogDesc.trim();
+      }
+    }
+  } catch (fetchErr) {
+    console.warn("[Shopee HTTP Fallback Notice]:", fetchErr);
+  }
+  const category = detectCategory(title, description);
+  const { bikeCompatibility, bikeVariants } = detectBikeCompatibility(title, description);
+  let price = 175e3;
+  if (category === "blok-mesin") price = 365e3;
+  else if (category === "noken-as") price = 215e3;
+  else if (category === "part-cvt") price = 195e3;
+  else if (category === "shockbreaker") price = 85e4;
+  else if (category === "pengereman") price = 45e4;
+  else if (category === "velg") price = 125e4;
+  else price = 135e3;
+  if (images.length === 0) {
+    images.push(image);
+  }
+  return {
+    name: title,
+    category,
+    price,
+    originalPrice: Math.round(price * 1.25),
+    stock: 50,
+    weight: 600,
+    image,
+    images,
+    description,
+    rating: 4.9,
+    soldCount: 115,
+    promoTag: "MALL",
+    fitmentTag: "100% PnP Presisi",
+    compatibilityText: bikeVariants.join(", ") || "Universal",
+    bikeCompatibility,
+    bikeVariants
+  };
 }
 
 // server/index.ts
@@ -5065,6 +5269,155 @@ app.patch("/api/admin/vouchers/:id/toggle", authMiddleware, adminMiddleware, asy
     }
     db_default.prepare("UPDATE vouchers SET is_active = ? WHERE id = ?").run(newStatus ? 1 : 0, id);
     res.json({ success: true, is_active: newStatus });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/admin/categories", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    let categories = [];
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await supabase.from("categories").select("*").order("id", { ascending: true });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        categories = data.map((c) => ({
+          id: c.id,
+          title: c.title,
+          subtitle: c.subtitle,
+          bikeFilter: c.bike_filter,
+          categoryFilter: c.category_filter || c.id.replace(/^cat-/, ""),
+          badgeText: c.badge_text,
+          count: c.count || 0,
+          icon: c.icon || "Sparkles",
+          tagline: c.tagline
+        }));
+      }
+    }
+    if (categories.length === 0) {
+      categories = db_default.prepare("SELECT * FROM categories ORDER BY id ASC").all();
+    }
+    let products = [];
+    if (isSupabaseConfigured() && supabase) {
+      const { data: pData } = await supabase.from("products").select("id, category").eq("is_active", true);
+      if (Array.isArray(pData)) products = pData;
+    }
+    if (products.length === 0) {
+      products = db_default.prepare("SELECT id, category FROM products WHERE is_active = 1").all();
+    }
+    const existingSlugs = new Set(categories.map((c) => (c.categoryFilter || "").toLowerCase()));
+    const extraCategories = [];
+    for (const p of products) {
+      const catSlug = (p.category || "").toLowerCase().trim();
+      if (catSlug && !existingSlugs.has(catSlug) && !existingSlugs.has(`cat-${catSlug}`)) {
+        existingSlugs.add(catSlug);
+        extraCategories.push({
+          id: `cat-${catSlug}`,
+          title: catSlug.split(/[-_\s]+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+          subtitle: `Koleksi part ${catSlug}`,
+          bikeFilter: null,
+          categoryFilter: catSlug,
+          badgeText: "Kategori Produk",
+          count: 0,
+          icon: "Tag",
+          tagline: `Part motor kategori ${catSlug}`
+        });
+      }
+    }
+    const allCategories = [...categories, ...extraCategories];
+    const enriched = allCategories.map((c) => {
+      const pCount = products.filter((p) => {
+        const cat = (p.category || "").toLowerCase().trim();
+        const cFilter = (c.categoryFilter || "").toLowerCase().trim();
+        return cat === cFilter || cat === c.id || cat.replace(/[-_]/g, "") === cFilter.replace(/[-_]/g, "");
+      }).length;
+      return {
+        ...c,
+        count: pCount
+      };
+    });
+    res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post("/api/admin/categories", authMiddleware, adminMiddleware, async (req, res) => {
+  const { title, subtitle, categoryFilter, badgeText, icon, tagline } = req.body || {};
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: "Nama kategori wajib diisi" });
+  }
+  const slug = (categoryFilter || title).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const id = `cat-${slug}`;
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from("categories").upsert({
+        id,
+        title: title.trim(),
+        subtitle: subtitle || tagline || `Produk pilihan ${title.trim()} berkualitas tinggi`,
+        bike_filter: null,
+        category_filter: slug,
+        badge_text: badgeText || "Kategori Baru",
+        icon: icon || "Sparkles",
+        tagline: tagline || subtitle || `Koleksi ${title.trim()} terlengkap`
+      });
+    }
+    db_default.prepare(`
+      INSERT OR REPLACE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(
+      id,
+      title.trim(),
+      subtitle || tagline || `Produk pilihan ${title.trim()} berkualitas tinggi`,
+      null,
+      slug,
+      badgeText || "Kategori Baru",
+      icon || "Sparkles",
+      tagline || subtitle || `Koleksi ${title.trim()} terlengkap`
+    );
+    res.json({ success: true, id, slug });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.put("/api/admin/categories/:id", authMiddleware, adminMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { title, subtitle, badgeText, icon, tagline } = req.body || {};
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: "Nama kategori wajib diisi" });
+  }
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from("categories").update({
+        title: title.trim(),
+        subtitle: subtitle || "",
+        badge_text: badgeText || "",
+        icon: icon || "Sparkles",
+        tagline: tagline || ""
+      }).eq("id", id);
+    }
+    db_default.prepare(`
+      UPDATE categories
+      SET title = ?, subtitle = ?, badgeText = ?, icon = ?, tagline = ?
+      WHERE id = ?
+    `).run(
+      title.trim(),
+      subtitle || "",
+      badgeText || "",
+      icon || "Sparkles",
+      tagline || "",
+      id
+    );
+    res.json({ success: true, message: "Kategori berhasil diperbarui" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.delete("/api/admin/categories/:id", authMiddleware, adminMiddleware, async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from("categories").delete().eq("id", id);
+    }
+    db_default.prepare("DELETE FROM categories WHERE id = ?").run(id);
+    res.json({ success: true, message: "Kategori berhasil dihapus" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

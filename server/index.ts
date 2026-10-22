@@ -2363,6 +2363,181 @@ app.patch('/api/admin/vouchers/:id/toggle', authMiddleware, adminMiddleware, asy
   }
 });
 
+// Admin Categories (CRUD)
+app.get('/api/admin/categories', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  try {
+    let categories: any[] = [];
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await supabase.from('categories').select('*').order('id', { ascending: true });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        categories = data.map((c: any) => ({
+          id: c.id,
+          title: c.title,
+          subtitle: c.subtitle,
+          bikeFilter: c.bike_filter,
+          categoryFilter: c.category_filter || c.id.replace(/^cat-/, ''),
+          badgeText: c.badge_text,
+          count: c.count || 0,
+          icon: c.icon || 'Sparkles',
+          tagline: c.tagline,
+        }));
+      }
+    }
+
+    if (categories.length === 0) {
+      categories = db.prepare('SELECT * FROM categories ORDER BY id ASC').all();
+    }
+
+    // Get live product counts
+    let products: any[] = [];
+    if (isSupabaseConfigured() && supabase) {
+      const { data: pData } = await supabase.from('products').select('id, category').eq('is_active', true);
+      if (Array.isArray(pData)) products = pData;
+    }
+    if (products.length === 0) {
+      products = db.prepare('SELECT id, category FROM products WHERE is_active = 1').all() as any[];
+    }
+
+    // Also collect any distinct categories from products that might not be in categories table yet
+    const existingSlugs = new Set(categories.map((c: any) => (c.categoryFilter || '').toLowerCase()));
+    const extraCategories: any[] = [];
+
+    for (const p of products) {
+      const catSlug = (p.category || '').toLowerCase().trim();
+      if (catSlug && !existingSlugs.has(catSlug) && !existingSlugs.has(`cat-${catSlug}`)) {
+        existingSlugs.add(catSlug);
+        extraCategories.push({
+          id: `cat-${catSlug}`,
+          title: catSlug.split(/[-_\s]+/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          subtitle: `Koleksi part ${catSlug}`,
+          bikeFilter: null,
+          categoryFilter: catSlug,
+          badgeText: 'Kategori Produk',
+          count: 0,
+          icon: 'Tag',
+          tagline: `Part motor kategori ${catSlug}`,
+        });
+      }
+    }
+
+    const allCategories = [...categories, ...extraCategories];
+
+    const enriched = allCategories.map((c: any) => {
+      const pCount = products.filter((p: any) => {
+        const cat = (p.category || '').toLowerCase().trim();
+        const cFilter = (c.categoryFilter || '').toLowerCase().trim();
+        return cat === cFilter || cat === c.id || cat.replace(/[-_]/g, '') === cFilter.replace(/[-_]/g, '');
+      }).length;
+      return {
+        ...c,
+        count: pCount,
+      };
+    });
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/categories', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  const { title, subtitle, categoryFilter, badgeText, icon, tagline } = req.body || {};
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Nama kategori wajib diisi' });
+  }
+
+  const slug = (categoryFilter || title)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  const id = `cat-${slug}`;
+
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('categories').upsert({
+        id,
+        title: title.trim(),
+        subtitle: subtitle || tagline || `Produk pilihan ${title.trim()} berkualitas tinggi`,
+        bike_filter: null,
+        category_filter: slug,
+        badge_text: badgeText || 'Kategori Baru',
+        icon: icon || 'Sparkles',
+        tagline: tagline || subtitle || `Koleksi ${title.trim()} terlengkap`,
+      });
+    }
+
+    db.prepare(`
+      INSERT OR REPLACE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `).run(
+      id,
+      title.trim(),
+      subtitle || tagline || `Produk pilihan ${title.trim()} berkualitas tinggi`,
+      null,
+      slug,
+      badgeText || 'Kategori Baru',
+      icon || 'Sparkles',
+      tagline || subtitle || `Koleksi ${title.trim()} terlengkap`
+    );
+
+    res.json({ success: true, id, slug });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/categories/:id', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  const { id } = req.params;
+  const { title, subtitle, badgeText, icon, tagline } = req.body || {};
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Nama kategori wajib diisi' });
+  }
+
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('categories').update({
+        title: title.trim(),
+        subtitle: subtitle || '',
+        badge_text: badgeText || '',
+        icon: icon || 'Sparkles',
+        tagline: tagline || '',
+      }).eq('id', id);
+    }
+
+    db.prepare(`
+      UPDATE categories
+      SET title = ?, subtitle = ?, badgeText = ?, icon = ?, tagline = ?
+      WHERE id = ?
+    `).run(
+      title.trim(),
+      subtitle || '',
+      badgeText || '',
+      icon || 'Sparkles',
+      tagline || '',
+      id
+    );
+
+    res.json({ success: true, message: 'Kategori berhasil diperbarui' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/categories/:id', authMiddleware, adminMiddleware, async (req: any, res: any) => {
+  const { id } = req.params;
+  try {
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('categories').delete().eq('id', id);
+    }
+    db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Kategori berhasil dihapus' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // =====================================================================
 // LIVE CHAT & CHATBOT API (Shopee Style)
 // =====================================================================

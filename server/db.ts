@@ -469,13 +469,43 @@ function createInMemoryDb() {
             if (r) r.bot_enabled = bot_enabled;
             return { changes: 1, lastInsertRowid: 0 };
           }
-          if (cleanSql.includes('DELETE FROM chat_rooms WHERE id = ?')) {
-            const [id] = params;
-            const idx = chat_rooms.findIndex((rm: any) => rm.id === id);
-            if (idx !== -1) chat_rooms.splice(idx, 1);
-            for (let i = chat_messages.length - 1; i >= 0; i--) {
-              if (chat_messages[i].room_id === id) chat_messages.splice(i, 1);
+          if (cleanSql.includes('categories') && cleanSql.includes('INSERT')) {
+            const [id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline] = params;
+            const existingIdx = categories.findIndex((c: any) => c.id === id || c.categoryFilter === categoryFilter);
+            const newCat = {
+              id: id || `cat-${categoryFilter}`,
+              title,
+              subtitle: subtitle || tagline || '',
+              bikeFilter: bikeFilter || null,
+              categoryFilter,
+              badgeText: badgeText || '',
+              count: count || 0,
+              icon: icon || 'Sparkles',
+              tagline: tagline || subtitle || '',
+            };
+            if (existingIdx !== -1) {
+              categories[existingIdx] = { ...categories[existingIdx], ...newCat };
+            } else {
+              categories.push(newCat);
             }
+            return { changes: 1, lastInsertRowid: categories.length };
+          }
+          if (cleanSql.includes('UPDATE categories SET') && cleanSql.includes('title = ?')) {
+            const [title, subtitle, badgeText, icon, tagline, id] = params;
+            const c = categories.find((cat: any) => cat.id === id);
+            if (c) {
+              c.title = title;
+              c.subtitle = subtitle;
+              c.badgeText = badgeText;
+              c.icon = icon;
+              c.tagline = tagline;
+            }
+            return { changes: 1, lastInsertRowid: 0 };
+          }
+          if (cleanSql.includes('DELETE FROM categories WHERE id = ?')) {
+            const [id] = params;
+            const idx = categories.findIndex((cat: any) => cat.id === id);
+            if (idx !== -1) categories.splice(idx, 1);
             return { changes: 1, lastInsertRowid: 0 };
           }
           return { changes: 0, lastInsertRowid: 0 };
@@ -528,9 +558,8 @@ function ensureColumn(tableName: string, colName: string, colDef: string) {
 export function seedDatabase(targetDb: any = db) {
   if (targetDb.isInMemory) return;
   try {
-    targetDb.exec(`DELETE FROM categories`);
     const insertCategory = targetDb.prepare(`
-      INSERT OR REPLACE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
+      INSERT OR IGNORE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const cat of CATEGORY_ITEMS) {
