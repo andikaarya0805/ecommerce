@@ -19,8 +19,8 @@ import { UserBike } from '../types';
 
 interface BrandHeroSectionProps {
   totalProducts: number;
-  selectedBike: UserBike | null;
-  onOpenGarage: () => void;
+  selectedBike?: UserBike | null;
+  onOpenGarage?: () => void;
   activeStoreTab: string;
   onSelectStoreTab: (tab: string) => void;
 }
@@ -161,19 +161,6 @@ export const BrandHeroSection: React.FC<BrandHeroSectionProps> = ({
               >
                 <span>Eksplor Katalog Part</span>
                 <ArrowRight className="w-4 h-4" />
-              </button>
-
-              {/* Garasi Motor Shortcut */}
-              <button
-                onClick={onOpenGarage}
-                className={`inline-flex items-center gap-2 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-lg border transition-all cursor-pointer ${
-                  selectedBike
-                    ? 'bg-emerald-950/40 border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/50'
-                    : 'bg-neutral-900 border-neutral-700 hover:border-red-500 text-neutral-200'
-                }`}
-              >
-                <Bike className="w-4 h-4 text-[#E50914]" />
-                <span>{selectedBike ? `Motor: ${selectedBike.name}` : 'Pilih Motor di Garasi'}</span>
               </button>
 
               <button

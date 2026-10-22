@@ -19,7 +19,7 @@ import { FooterTrustBadges } from './components/FooterTrustBadges';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 import { LiveChatWidget } from './components/LiveChatWidget';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { AdminPanel } from './pages/AdminPanel';
 import { InvoicePage } from './pages/InvoicePage';
@@ -44,14 +44,46 @@ function StoreFront() {
   } = useCart();
   const navigate = useNavigate();
 
+  // Search parameters from URL
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQuery = searchParams.get('q') || searchParams.get('search') || '';
+
   // State variables
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
   const [activeTab, setActiveTab] = useState<MainTabType>('semua');
   const [selectedBikeType, setSelectedBikeType] = useState<BikeType>('all');
   const [sortOption, setSortOption] = useState<SortOption>('populer');
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   
   const [userBike, setUserBike] = useState<UserBike | null>(null);
+
+  // Synchronize URL query parameter with searchQuery state
+  useEffect(() => {
+    if (urlQuery !== searchQuery) {
+      setSearchQuery(urlQuery);
+      if (urlQuery.trim()) {
+        setActiveTab('semua');
+        setTimeout(() => {
+          const el = document.getElementById('product-catalog-section');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+    }
+  }, [urlQuery]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (val.trim()) {
+      if (activeTab === 'kategori') {
+        setActiveTab('semua');
+      }
+      setSearchParams({ q: val }, { replace: true });
+    } else {
+      if (searchParams.get('q') || searchParams.get('search')) {
+        setSearchParams({}, { replace: true });
+      }
+    }
+  };
   
   // Initialize with INITIAL_PRODUCTS so user dashboard products render immediately on load
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
@@ -224,17 +256,16 @@ function StoreFront() {
       );
     }
 
-    // Smart search filter
+    // Smart search filter (multi-token keyword matching)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          p.compatibilityText?.toLowerCase().includes(q) ||
-          p.description?.toLowerCase().includes(q) ||
-          p.category?.toLowerCase().includes(q) ||
-          p.fitmentTag?.toLowerCase().includes(q)
-      );
+      const tokens = q.split(/\s+/).filter(Boolean);
+      list = list.filter((p) => {
+        const bikeCompatStr = Array.isArray(p.bikeCompatibility) ? p.bikeCompatibility.join(' ') : '';
+        const searchCorpus = `${p.name || ''} ${p.compatibilityText || ''} ${p.description || ''} ${p.category || ''} ${p.fitmentTag || ''} ${p.brand || ''} ${bikeCompatStr}`.toLowerCase();
+
+        return searchCorpus.includes(q) || tokens.every((token) => searchCorpus.includes(token));
+      });
     }
 
     // Sorting
@@ -268,18 +299,14 @@ function StoreFront() {
       {/* Header & Smart Search */}
       <Header
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={handleSearchChange}
         cartCount={totalCartCount}
         onOpenCart={() => setIsCartOpen(true)}
-        selectedBike={userBike}
-        onOpenGarage={() => setIsGarageModalOpen(true)}
       />
 
       {/* Brand Hero Section & Store Tabs */}
       <BrandHeroSection
         totalProducts={products.length}
-        selectedBike={userBike}
-        onOpenGarage={() => setIsGarageModalOpen(true)}
         activeStoreTab={activeTab}
         onSelectStoreTab={(tab: any) => setActiveTab(tab)}
       />
@@ -294,8 +321,8 @@ function StoreFront() {
         />
 
 
-        {/* Dynamic View: If tab is 'kategori', show VerticalCategoryList; otherwise show products grid */}
-        {activeTab === 'kategori' ? (
+        {/* Dynamic View: If tab is 'kategori' and no active search, show VerticalCategoryList; otherwise show products grid */}
+        {activeTab === 'kategori' && !searchQuery.trim() ? (
           <VerticalCategoryList
             categories={categories}
             onSelectCategoryFilter={handleSelectCategoryFromList}
@@ -306,8 +333,6 @@ function StoreFront() {
             <VehicleFilterSubBar
               selectedBikeType={selectedBikeType}
               onSelectBikeType={setSelectedBikeType}
-              userBike={userBike}
-              onOpenGarage={() => setIsGarageModalOpen(true)}
             />
 
             {/* Product Sorting Bar */}
@@ -330,6 +355,7 @@ function StoreFront() {
                 setSearchQuery('');
                 setActiveTab('semua');
                 setSortOption('populer');
+                setSearchParams({}, { replace: true });
               }}
             />
           </>

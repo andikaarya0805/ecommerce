@@ -32,7 +32,6 @@ export const LiveChatWidget: React.FC = () => {
     location.pathname.startsWith('/admin');
 
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -60,25 +59,72 @@ export const LiveChatWidget: React.FC = () => {
 
   const roomId = user ? `room_user_${user.id}` : `room_guest_${guestId}`;
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isFetchingRef = useRef(false);
+
+  // Initialize messages from localStorage cache to prevent blank flicker on load
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(`jawir_chat_cache_${roomId}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Save confirmed messages to localStorage cache
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem(`jawir_chat_cache_${roomId}`, JSON.stringify(messages));
+      } catch (e) {}
+    }
+  }, [messages, roomId]);
 
   const scrollToBottom = (smooth = true) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   };
 
-  // Fetch messages from server
+  // Fetch messages from server with deduplication & flickering prevention
   const fetchMessages = async () => {
+    if (isFetchingRef.current || isSending) return;
+    isFetchingRef.current = true;
     try {
       const res = await safeFetchJson<{ room: any; messages: ChatMessage[] }>(
         `/api/chat/messages/${roomId}`
       );
-      if (res && res.messages) {
-        setMessages(res.messages);
+      if (res && Array.isArray(res.messages)) {
+        setMessages((prev) => {
+          const pendingTemps = prev.filter((m) => m.id.startsWith('temp_'));
+
+          // If server returned empty array but we already have confirmed messages, do not overwrite
+          // (prevents disappearing messages during serverless cold starts or transient glitches)
+          if (res.messages.length === 0 && prev.length > 0 && pendingTemps.length === 0) {
+            return prev;
+          }
+
+          // Merge: keep optimistic pending messages not yet confirmed by the server
+          const serverIds = new Set(res.messages.map((m) => m.id));
+          const remainingTemps = pendingTemps.filter((t) => !serverIds.has(t.id));
+          const merged = [...res.messages, ...remainingTemps];
+
+          // Check if data is identical to avoid re-rendering and flickering
+          if (
+            prev.length === merged.length &&
+            prev.every((m, idx) => m.id === merged[idx].id && m.message === merged[idx].message)
+          ) {
+            return prev;
+          }
+          return merged;
+        });
+
         if (res.room && !isOpen) {
           setUnreadCount(res.room.unread_user || 0);
         }
       }
     } catch (err) {
       // Quiet fail on network hiccups
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
@@ -94,13 +140,13 @@ export const LiveChatWidget: React.FC = () => {
     } catch (err) {}
   };
 
-  // Polling: 1s when open, 2s when closed (Real-time sync)
+  // Polling: 3s when open, 6s when closed (Smooth real-time sync without hammering)
   useEffect(() => {
     fetchMessages();
-    const intervalTime = isOpen ? 1000 : 2000;
+    const intervalTime = isOpen ? 3000 : 6000;
     const interval = setInterval(fetchMessages, intervalTime);
     return () => clearInterval(interval);
-  }, [roomId, isOpen]);
+  }, [roomId, isOpen, isSending]);
 
   // When opening chat, clear unread & scroll to bottom
   useEffect(() => {
@@ -142,9 +188,10 @@ export const LiveChatWidget: React.FC = () => {
     setIsSending(true);
     setInputMessage('');
 
-    // Optimistic user message
+    // Optimistic user message with temporary ID
+    const tempId = 'temp_' + Date.now();
     const tempMsg: ChatMessage = {
-      id: 'temp_' + Date.now(),
+      id: tempId,
       room_id: roomId,
       sender_type: 'user',
       sender_name: user ? user.username : guestName,
@@ -166,6 +213,7 @@ export const LiveChatWidget: React.FC = () => {
       const res = await safeFetchJson<{
         success: boolean;
         roomId: string;
+        messageId?: string;
         botReply?: ChatMessage | null;
       }>('/api/chat/send', {
         method: 'POST',
@@ -179,12 +227,41 @@ export const LiveChatWidget: React.FC = () => {
         }),
       });
 
-      if (res && res.botReply) {
-        setMessages((prev) => [...prev, res.botReply!]);
+      if (res && res.success) {
+        setMessages((prev) => {
+          // Replace tempId with confirmed messageId
+          const updated = prev.map((m) =>
+            m.id === tempId ? { ...m, id: res.messageId || m.id } : m
+          );
+          if (res.botReply && !updated.some((m) => m.id === res.botReply!.id)) {
+            return [...updated, res.botReply];
+          }
+          return updated;
+        });
+      } else {
+        // Fallback bot response so customer never encounters "no respon"
+        const fallbackBot: ChatMessage = {
+          id: 'bot_fallback_' + Date.now(),
+          room_id: roomId,
+          sender_type: 'bot',
+          sender_name: 'Jawir Bot (Asisten Virtual)',
+          message: 'Halo Kak! Pesan Kakak sudah masuk ke sistem kami. Mekanik & admin Jawir Garage sedang menyiapkan jawaban terbaik. Ada pertanyaan lain seputar sparepart atau motor Kakak?',
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, fallbackBot]);
       }
-      await fetchMessages();
     } catch (err: any) {
       console.error('Error sending chat:', err);
+      // Fallback bot reply so chat is never silent on network hiccup
+      const fallbackBot: ChatMessage = {
+        id: 'bot_err_' + Date.now(),
+        room_id: roomId,
+        sender_type: 'bot',
+        sender_name: 'Jawir Bot (Asisten Virtual)',
+        message: 'Mohon maaf Kak, terjadi sedikit kendala jaringan. Mekanik dan admin kami akan segera merespons chat Kakak. Silakan coba kirim ulang jika mendesak ya!',
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, fallbackBot]);
     } finally {
       setIsSending(false);
       scrollToBottom();

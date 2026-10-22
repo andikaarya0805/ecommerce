@@ -633,14 +633,31 @@ export async function syncFromSupabase(targetDb: any) {
     if (!uErr && users && users.length > 0) {
       for (const u of users) {
         try {
-          const existing = targetDb.prepare('SELECT id FROM users WHERE username = ?').get(u.username);
-          if (!existing) {
-            targetDb.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
-              u.id,
+          const existingById = targetDb.prepare('SELECT id FROM users WHERE id = ?').get(u.id);
+          if (existingById) {
+            targetDb.prepare('UPDATE users SET username = ?, password_hash = ?, role = ? WHERE id = ?').run(
               u.username,
               u.password_hash,
-              u.role || 'user'
+              u.role || 'user',
+              u.id
             );
+          } else {
+            const existingByName = targetDb.prepare('SELECT id FROM users WHERE username = ?').get(u.username);
+            if (existingByName) {
+              targetDb.prepare('UPDATE users SET id = ?, password_hash = ?, role = ? WHERE username = ?').run(
+                u.id,
+                u.password_hash,
+                u.role || 'user',
+                u.username
+              );
+            } else {
+              targetDb.prepare('INSERT OR REPLACE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+                u.id,
+                u.username,
+                u.password_hash,
+                u.role || 'user'
+              );
+            }
           }
         } catch (e) {}
       }
@@ -676,10 +693,302 @@ export async function syncFromSupabase(targetDb: any) {
       }
       console.log(`[Supabase] Synced ${prods.length} products into local engine.`);
     }
+
+    // 3. Sync Recent Orders from Supabase
+    const { data: ords, error: oErr } = await client
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (!oErr && ords && ords.length > 0) {
+      for (const ord of ords) {
+        try {
+          if (ord.user_id) {
+            targetDb.prepare('INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+              ord.user_id,
+              ord.customer_name || 'user',
+              'hash',
+              'user'
+            );
+          }
+          targetDb.prepare(`
+            INSERT OR REPLACE INTO orders (
+              id, invoice_number, user_id, customer_name, customer_email, customer_phone,
+              shipping_address, customer_notes, shipping_province, shipping_city, shipping_district,
+              courier_name, courier_service, tracking_number, subtotal_amount, shipping_cost,
+              voucher_id, voucher_code, discount_amount, grand_total, status, payment_method,
+              payment_url, snap_token, expired_at, paid_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            ord.id,
+            ord.invoice_number,
+            ord.user_id || null,
+            ord.customer_name,
+            ord.customer_email || null,
+            ord.customer_phone,
+            ord.shipping_address,
+            ord.customer_notes || null,
+            ord.shipping_province || '',
+            ord.shipping_city || '',
+            ord.shipping_district || '',
+            ord.courier_name || 'JNE Express',
+            ord.courier_service || 'REG',
+            ord.tracking_number || null,
+            ord.subtotal_amount || 0,
+            ord.shipping_cost || 0,
+            ord.voucher_id || null,
+            ord.voucher_code || null,
+            ord.discount_amount || 0,
+            ord.grand_total,
+            ord.status || 'PENDING',
+            ord.payment_method || 'qris',
+            ord.payment_url || null,
+            ord.snap_token || null,
+            ord.expired_at || new Date().toISOString(),
+            ord.paid_at || null,
+            ord.created_at || new Date().toISOString(),
+            ord.updated_at || new Date().toISOString()
+          );
+        } catch (e) {}
+      }
+
+      // Sync Order Items
+      const orderIds = ords.map((o: any) => o.id);
+      if (orderIds.length > 0) {
+        const { data: oItems } = await client.from('order_items').select('*').in('order_id', orderIds);
+        if (oItems && oItems.length > 0) {
+          for (const it of oItems) {
+            try {
+              targetDb.prepare(`
+                INSERT OR REPLACE INTO order_items (
+                  id, order_id, product_id, product_name_snapshot, price_snapshot, quantity, subtotal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                it.id,
+                it.order_id,
+                it.product_id || null,
+                it.product_name_snapshot || it.name || 'Produk',
+                it.price_snapshot || it.price || 0,
+                it.quantity || 1,
+                it.subtotal || 0
+              );
+            } catch (e) {}
+          }
+        }
+      }
+      console.log(`[Supabase] Synced ${ords.length} orders into local engine.`);
+    }
   } catch (err) {
     console.warn('[Supabase] Initial sync notice:', err);
   }
 }
 
+export async function fetchSupabaseOrder(idOrInvoice: string): Promise<any | null> {
+  if (!client) return null;
+  try {
+    let order: any = null;
+
+    if (idOrInvoice.startsWith('INV-')) {
+      const { data, error } = await client
+        .from('orders')
+        .select('*')
+        .eq('invoice_number', idOrInvoice)
+        .maybeSingle();
+      if (!error && data) order = data;
+    } else {
+      // Try by id first
+      const { data, error } = await client
+        .from('orders')
+        .select('*')
+        .eq('id', idOrInvoice)
+        .maybeSingle();
+      if (!error && data) {
+        order = data;
+      } else {
+        // Fallback by invoice
+        const resInv = await client
+          .from('orders')
+          .select('*')
+          .eq('invoice_number', idOrInvoice)
+          .maybeSingle();
+        if (!resInv.error && resInv.data) order = resInv.data;
+      }
+    }
+
+    if (!order) return null;
+
+    const { data: items } = await client
+      .from('order_items')
+      .select('*')
+      .eq('order_id', order.id);
+
+    return {
+      ...order,
+      items: items || [],
+    };
+  } catch (err) {
+    console.warn('[Supabase] fetchSupabaseOrder error:', err);
+    return null;
+  }
+}
+
+/**
+ * Chat Rooms & Messages Supabase Sync Functions
+ */
+export async function upsertSupabaseChatRoom(room: {
+  id: string;
+  user_id?: string | null;
+  user_name?: string;
+  last_message?: string;
+  last_message_at?: string;
+  unread_admin?: number;
+  unread_user?: number;
+  bot_enabled?: number;
+  created_at?: string;
+}): Promise<boolean> {
+  if (!client) return false;
+  try {
+    const row: any = {
+      id: room.id,
+      user_id: room.user_id || null,
+      user_name: room.user_name || 'Pelanggan',
+      last_message: room.last_message || '',
+      last_message_at: room.last_message_at || new Date().toISOString(),
+      unread_admin: room.unread_admin ?? 0,
+      unread_user: room.unread_user ?? 0,
+      bot_enabled: room.bot_enabled ?? 1,
+      created_at: room.created_at || new Date().toISOString(),
+    };
+    const { error } = await client.from('chat_rooms').upsert(row);
+    if (error) {
+      console.warn('[Supabase] upsertChatRoom error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] upsertChatRoom exception:', err);
+    return false;
+  }
+}
+
+export async function insertSupabaseChatMessage(msg: {
+  id: string;
+  room_id: string;
+  sender_type: string;
+  sender_name: string;
+  message: string;
+  product_payload?: any;
+  created_at?: string;
+}): Promise<boolean> {
+  if (!client) return false;
+  try {
+    const row: any = {
+      id: msg.id,
+      room_id: msg.room_id,
+      sender_type: msg.sender_type,
+      sender_name: msg.sender_name,
+      message: msg.message,
+      product_payload: msg.product_payload
+        ? (typeof msg.product_payload === 'string' ? JSON.parse(msg.product_payload) : msg.product_payload)
+        : null,
+      created_at: msg.created_at || new Date().toISOString(),
+    };
+    const { error } = await client.from('chat_messages').insert(row);
+    if (error) {
+      console.warn('[Supabase] insertChatMessage error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] insertChatMessage exception:', err);
+    return false;
+  }
+}
+
+export async function getSupabaseChatMessages(roomId: string): Promise<{ room: any; messages: any[] } | null> {
+  if (!client) return null;
+  try {
+    const { data: room } = await client.from('chat_rooms').select('*').eq('id', roomId).maybeSingle();
+    const { data: messages, error } = await client
+      .from('chat_messages')
+      .select('*')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn('[Supabase] getSupabaseChatMessages error:', error);
+      return null;
+    }
+
+    const parsedMessages = (messages || []).map((m: any) => ({
+      ...m,
+      product_payload: m.product_payload
+        ? (typeof m.product_payload === 'string' ? JSON.parse(m.product_payload) : m.product_payload)
+        : null,
+    }));
+
+    return {
+      room: room || null,
+      messages: parsedMessages,
+    };
+  } catch (err) {
+    console.warn('[Supabase] getSupabaseChatMessages exception:', err);
+    return null;
+  }
+}
+
+export async function getSupabaseChatRooms(): Promise<any[] | null> {
+  if (!client) return null;
+  try {
+    const { data: rooms, error } = await client
+      .from('chat_rooms')
+      .select('*')
+      .order('last_message_at', { ascending: false });
+
+    if (error) {
+      console.warn('[Supabase] getSupabaseChatRooms error:', error);
+      return null;
+    }
+    return rooms || [];
+  } catch (err) {
+    console.warn('[Supabase] getSupabaseChatRooms exception:', err);
+    return null;
+  }
+}
+
+export async function updateSupabaseRoomRead(roomId: string, role: string): Promise<boolean> {
+  if (!client) return false;
+  try {
+    const updateData = role === 'admin' ? { unread_admin: 0 } : { unread_user: 0 };
+    const { error } = await client.from('chat_rooms').update(updateData).eq('id', roomId);
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function toggleSupabaseBotStatus(roomId: string, botEnabled: number): Promise<boolean> {
+  if (!client) return false;
+  try {
+    const { error } = await client.from('chat_rooms').update({ bot_enabled: botEnabled }).eq('id', roomId);
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function deleteSupabaseRoom(roomId: string): Promise<boolean> {
+  if (!client) return false;
+  try {
+    await client.from('chat_messages').delete().eq('room_id', roomId);
+    const { error } = await client.from('chat_rooms').delete().eq('id', roomId);
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+
 export const supabase = client;
+
 

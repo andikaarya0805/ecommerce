@@ -128,15 +128,6 @@ export const ShopeeStoreHeader: React.FC<ShopeeStoreHeaderProps> = ({
                   <MessageCircle className="w-3.5 h-3.5 text-[#E50914]" />
                   <span>Chat Penjual</span>
                 </button>
-
-                {/* Garasi Motor shortcut */}
-                <button
-                  onClick={onOpenGarage}
-                  className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded bg-neutral-900/80 border border-neutral-800 hover:border-red-600/60 text-neutral-300 text-xs font-medium transition-all"
-                >
-                  <Bike className="w-3.5 h-3.5 text-[#E50914]" />
-                  <span>{selectedBike ? selectedBike.name : 'Pilih Motor Garasi'}</span>
-                </button>
               </div>
             </div>
           </div>

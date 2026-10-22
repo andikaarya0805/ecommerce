@@ -6,15 +6,13 @@ import { Check, Bike } from 'lucide-react';
 interface VehicleFilterSubBarProps {
   selectedBikeType: BikeType;
   onSelectBikeType: (type: BikeType) => void;
-  userBike: UserBike | null;
-  onOpenGarage: () => void;
+  userBike?: UserBike | null;
+  onOpenGarage?: () => void;
 }
 
 export const VehicleFilterSubBar: React.FC<VehicleFilterSubBarProps> = ({
   selectedBikeType,
   onSelectBikeType,
-  userBike,
-  onOpenGarage,
 }) => {
   return (
     <div className="bg-[#161616] border-b border-neutral-800/80 py-2 px-3 sm:px-4">
@@ -44,29 +42,6 @@ export const VehicleFilterSubBar: React.FC<VehicleFilterSubBarProps> = ({
               </button>
             );
           })}
-        </div>
-
-        {/* Garage matching prompt */}
-        <div className="flex-shrink-0 ml-auto pl-2 border-l border-neutral-800 hidden sm:block">
-          {userBike ? (
-            <button
-              onClick={() => onSelectBikeType(userBike.type)}
-              className={`text-[11px] font-bold flex items-center gap-1 px-2 py-0.5 rounded transition-all ${
-                selectedBikeType === userBike.type
-                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <span>Fit Motor Kamu ({userBike.name.split(' ')[1] || 'Motor'})</span>
-            </button>
-          ) : (
-            <button
-              onClick={onOpenGarage}
-              className="text-[11px] font-medium text-red-400 hover:text-red-300 flex items-center gap-1"
-            >
-              <span>+ Set Motor Garasi</span>
-            </button>
-          )}
         </div>
       </div>
     </div>

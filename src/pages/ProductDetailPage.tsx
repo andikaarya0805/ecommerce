@@ -332,12 +332,8 @@ export const ProductDetailPage: React.FC = () => {
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         <AnnouncementBar />
         <Header
-          searchQuery=""
-          onSearchChange={() => {}}
           cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
           onOpenCart={() => setIsCartOpen(true)}
-          selectedBike={userBike}
-          onOpenGarage={() => setIsGarageModalOpen(true)}
         />
         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[50vh]">
           <div className="w-12 h-12 border-4 border-[#D0011B] border-t-transparent rounded-full animate-spin mb-4" />
@@ -354,12 +350,8 @@ export const ProductDetailPage: React.FC = () => {
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         <AnnouncementBar />
         <Header
-          searchQuery=""
-          onSearchChange={() => {}}
           cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
           onOpenCart={() => setIsCartOpen(true)}
-          selectedBike={userBike}
-          onOpenGarage={() => setIsGarageModalOpen(true)}
         />
         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[50vh] space-y-4">
           <p className="text-xl font-bold text-white">Produk Tidak Ditemukan</p>
@@ -398,12 +390,8 @@ export const ProductDetailPage: React.FC = () => {
 
       {/* Shopee-style Header */}
       <Header
-        searchQuery=""
-        onSearchChange={() => {}}
         cartCount={cartItems.reduce((s, i) => s + i.quantity, 0)}
         onOpenCart={() => setIsCartOpen(true)}
-        selectedBike={userBike}
-        onOpenGarage={() => setIsGarageModalOpen(true)}
       />
 
       {/* Breadcrumb Navigation */}

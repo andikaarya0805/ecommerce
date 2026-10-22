@@ -124,7 +124,7 @@ export async function createSnapTransaction(
   };
 
   try {
-    const response = await fetch(SNAP_API_URL, {
+    let response = await fetch(SNAP_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -134,10 +134,49 @@ export async function createSnapTransaction(
       body: JSON.stringify(requestBody),
     });
 
-    const data = await response.json();
+    let data = await response.json();
+
+    // Retry 1: If failed and enabled_payments was specified, retry without payment restriction
+    if (!response.ok && requestBody.enabled_payments) {
+      console.warn('[Midtrans] Initial snap creation notice, retrying without payment method restriction...', data);
+      const fallbackBody = { ...requestBody };
+      delete (fallbackBody as any).enabled_payments;
+      response = await fetch(SNAP_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: authHeader,
+        },
+        body: JSON.stringify(fallbackBody),
+      });
+      data = await response.json();
+    }
+
+    // Retry 2: If still failed (e.g. item_details sum mismatch or negative discount), retry with minimal valid payload
+    if (!response.ok) {
+      console.warn('[Midtrans] Secondary retry with base transaction details...', data);
+      const minimalBody = {
+        transaction_details: {
+          order_id: payload.invoiceNumber,
+          gross_amount: Math.max(1000, Math.round(payload.grandTotal)),
+        },
+        customer_details: requestBody.customer_details,
+      };
+      response = await fetch(SNAP_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: authHeader,
+        },
+        body: JSON.stringify(minimalBody),
+      });
+      data = await response.json();
+    }
 
     if (!response.ok) {
-      console.error('[Midtrans] Error from Snap API:', data);
+      console.error('[Midtrans] Error from Snap API after retries:', data);
       throw new Error(data.error_messages ? data.error_messages.join(', ') : 'Gagal membuat Snap token');
     }
 

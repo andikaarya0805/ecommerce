@@ -1,29 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   ShoppingBag,
   X,
-  Bike,
   Flame,
   User,
-  Settings,
   Truck,
   Package,
-  Bell,
-  HelpCircle,
-  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { UserBike } from '../types';
 
 interface HeaderProps {
-  searchQuery: string;
-  onSearchChange: (val: string) => void;
+  searchQuery?: string;
+  onSearchChange?: (val: string) => void;
   cartCount: number;
   onOpenCart: () => void;
-  selectedBike: UserBike | null;
-  onOpenGarage: () => void;
+  selectedBike?: UserBike | null;
+  onOpenGarage?: () => void;
 }
 
 const POPULAR_SEARCH_TAGS = [
@@ -36,15 +31,76 @@ const POPULAR_SEARCH_TAGS = [
 ];
 
 export const Header: React.FC<HeaderProps> = ({
-  searchQuery,
+  searchQuery = '',
   onSearchChange,
   cartCount,
   onOpenCart,
-  selectedBike,
-  onOpenGarage,
 }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [internalQuery, setInternalQuery] = useState(searchQuery);
+
+  useEffect(() => {
+    setInternalQuery(searchQuery);
+  }, [searchQuery]);
+
+  const handleInputChange = (val: string) => {
+    setInternalQuery(val);
+    if (onSearchChange) {
+      onSearchChange(val);
+    }
+  };
+
+  const executeSearch = (queryToSearch: string) => {
+    const trimmed = queryToSearch.trim();
+    if (location.pathname !== '/') {
+      navigate(trimmed ? `/?q=${encodeURIComponent(trimmed)}` : '/');
+    } else {
+      if (onSearchChange) {
+        onSearchChange(trimmed);
+      }
+      const catalogEl = document.getElementById('product-catalog-section');
+      if (catalogEl) {
+        catalogEl.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSearch(internalQuery);
+  };
+
+  const handleClear = () => {
+    setInternalQuery('');
+    if (onSearchChange) {
+      onSearchChange('');
+    }
+    if (location.pathname === '/' && location.search) {
+      navigate('/', { replace: true });
+    }
+  };
+
+  const handleTagClick = (tag: string) => {
+    setInternalQuery(tag);
+    executeSearch(tag);
+  };
+
+  const handleLogoClick = () => {
+    setInternalQuery('');
+    if (onSearchChange) {
+      onSearchChange('');
+    }
+    if (location.pathname !== '/') {
+      navigate('/');
+    } else {
+      if (location.search) {
+        navigate('/', { replace: true });
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-[#0f0f0f] border-b border-neutral-800 transition-all select-none">
@@ -56,10 +112,6 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-neutral-300 font-semibold flex items-center gap-1">
               <span className="bg-[#D0011B] text-white text-[9px] font-black px-1 rounded">MALL</span>
               <span className="hidden sm:inline">Jawir Garage Platinum Speedshop</span>
-            </span>
-            <span className="hidden md:inline text-neutral-600">|</span>
-            <span className="hidden md:inline hover:text-white transition-colors cursor-pointer" onClick={onOpenGarage}>
-              {selectedBike ? `Motor Aktif: ${selectedBike.name}` : 'Pilih Motor Garasi'}
             </span>
           </div>
 
@@ -132,10 +184,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Brand Logo with MALL Badge */}
           <div
             className="flex items-center gap-2 cursor-pointer select-none group flex-shrink-0"
-            onClick={() => {
-              onSearchChange('');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
+            onClick={handleLogoClick}
           >
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-[#D0011B] via-red-800 to-black flex items-center justify-center shadow-lg shadow-red-950/40">
               <Flame className="w-5 h-5 text-white fill-white/20" />
@@ -158,19 +207,20 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Shopee Style Wide Search Box */}
           <div className="flex-1 max-w-2xl relative">
-            <div className="relative flex items-center bg-white rounded-md p-1 shadow-md">
+            <form onSubmit={handleSubmit} className="relative flex items-center bg-white rounded-md p-1 shadow-md">
               <input
                 id="smart-search-input"
                 type="text"
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
+                value={internalQuery}
+                onChange={(e) => handleInputChange(e.target.value)}
                 placeholder="Cari part di Jawir Garage Official Mall..."
                 className="w-full px-3 py-1.5 text-xs sm:text-sm text-neutral-900 placeholder-neutral-500 bg-transparent focus:outline-none"
               />
-              {searchQuery && (
+              {internalQuery && (
                 <button
-                  onClick={() => onSearchChange('')}
-                  className="text-neutral-400 hover:text-neutral-700 p-1 mr-1"
+                  type="button"
+                  onClick={handleClear}
+                  className="text-neutral-400 hover:text-neutral-700 p-1 mr-1 cursor-pointer"
                   aria-label="Hapus Pencarian"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -178,19 +228,21 @@ export const Header: React.FC<HeaderProps> = ({
               )}
               {/* Shopee iconic Orange/Red Search Button */}
               <button
+                type="submit"
                 className="bg-[#D0011B] hover:bg-red-700 active:scale-95 text-white px-4 sm:px-6 py-2 rounded font-bold flex items-center justify-center transition-all cursor-pointer"
                 title="Cari"
               >
                 <Search className="w-4 h-4" />
               </button>
-            </div>
+            </form>
 
             {/* Popular Search Tags Underneath Search Bar (Iconic Shopee feature) */}
             <div className="hidden sm:flex items-center gap-2 mt-1.5 overflow-x-auto no-scrollbar text-[11px] text-neutral-400">
               {POPULAR_SEARCH_TAGS.map((tag) => (
                 <button
                   key={tag}
-                  onClick={() => onSearchChange(tag)}
+                  type="button"
+                  onClick={() => handleTagClick(tag)}
                   className="hover:text-red-400 transition-colors truncate whitespace-nowrap cursor-pointer"
                 >
                   {tag}

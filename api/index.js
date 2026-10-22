@@ -1002,6 +1002,10 @@ if (DatabaseSync) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     const nativeDb = new DatabaseSync(path.join(dataDir, "ecommerce.db"));
+    try {
+      nativeDb.exec("PRAGMA foreign_keys = OFF;");
+    } catch (e) {
+    }
     nativeDb.exec("CREATE TABLE IF NOT EXISTS _test_probe (id INT);");
     db = nativeDb;
     console.log("[DB] Native SQLite initialized at:", path.join(dataDir, "ecommerce.db"));
@@ -1136,6 +1140,10 @@ function seedDatabase(targetDb = db) {
 function initDb() {
   if (db.isInMemory) return;
   try {
+    try {
+      db.exec("PRAGMA foreign_keys = OFF;");
+    } catch (e) {
+    }
     db.exec(`
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
@@ -1186,7 +1194,6 @@ function initDb() {
       CREATE TABLE IF NOT EXISTS product_bike_compatibility (
         product_id TEXT NOT NULL,
         bike_type TEXT NOT NULL,
-        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
         PRIMARY KEY (product_id, bike_type)
       );
 
@@ -1213,6 +1220,7 @@ function initDb() {
         customer_email TEXT,
         customer_phone TEXT NOT NULL,
         shipping_address TEXT NOT NULL,
+        customer_notes TEXT,
         shipping_province TEXT,
         shipping_city TEXT,
         shipping_district TEXT,
@@ -1228,10 +1236,14 @@ function initDb() {
         status TEXT NOT NULL DEFAULT 'PENDING',
         payment_method TEXT NOT NULL DEFAULT 'qris',
         payment_url TEXT,
+        snap_token TEXT,
+        biteship_order_id TEXT,
+        biteship_tracking_id TEXT,
+        destination_area_id TEXT,
         expired_at TEXT NOT NULL,
         paid_at TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS order_items (
@@ -1241,8 +1253,7 @@ function initDb() {
         product_name_snapshot TEXT NOT NULL,
         price_snapshot INTEGER NOT NULL,
         quantity INTEGER NOT NULL,
-        subtotal INTEGER NOT NULL,
-        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        subtotal INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS chat_rooms (
@@ -1254,8 +1265,7 @@ function initDb() {
         unread_admin INTEGER NOT NULL DEFAULT 0,
         unread_user INTEGER NOT NULL DEFAULT 0,
         bot_enabled INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS chat_messages (
@@ -1265,8 +1275,7 @@ function initDb() {
         sender_name TEXT NOT NULL,
         message TEXT NOT NULL,
         product_payload TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
     ensureColumn("products", "slug", "TEXT");
@@ -1289,6 +1298,7 @@ function initDb() {
     ensureColumn("orders", "biteship_tracking_id", "TEXT");
     ensureColumn("orders", "destination_area_id", "TEXT");
     ensureColumn("orders", "customer_notes", "TEXT");
+    ensureColumn("orders", "updated_at", "TEXT DEFAULT (datetime('now'))");
     ensureColumn("products", "variation_groups", "TEXT");
     ensureColumn("products", "bike_variants", "TEXT");
     try {
@@ -1863,14 +1873,31 @@ async function syncFromSupabase(targetDb) {
     if (!uErr && users && users.length > 0) {
       for (const u of users) {
         try {
-          const existing = targetDb.prepare("SELECT id FROM users WHERE username = ?").get(u.username);
-          if (!existing) {
-            targetDb.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
-              u.id,
+          const existingById = targetDb.prepare("SELECT id FROM users WHERE id = ?").get(u.id);
+          if (existingById) {
+            targetDb.prepare("UPDATE users SET username = ?, password_hash = ?, role = ? WHERE id = ?").run(
               u.username,
               u.password_hash,
-              u.role || "user"
+              u.role || "user",
+              u.id
             );
+          } else {
+            const existingByName = targetDb.prepare("SELECT id FROM users WHERE username = ?").get(u.username);
+            if (existingByName) {
+              targetDb.prepare("UPDATE users SET id = ?, password_hash = ?, role = ? WHERE username = ?").run(
+                u.id,
+                u.password_hash,
+                u.role || "user",
+                u.username
+              );
+            } else {
+              targetDb.prepare("INSERT OR REPLACE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+                u.id,
+                u.username,
+                u.password_hash,
+                u.role || "user"
+              );
+            }
           }
         } catch (e) {
         }
@@ -1921,8 +1948,227 @@ async function syncFromSupabase(targetDb) {
       }
       console.log(`[Supabase] Synced ${prods.length} products into local engine.`);
     }
+    const { data: ords, error: oErr } = await client.from("orders").select("*").order("created_at", { ascending: false }).limit(100);
+    if (!oErr && ords && ords.length > 0) {
+      for (const ord of ords) {
+        try {
+          if (ord.user_id) {
+            targetDb.prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+              ord.user_id,
+              ord.customer_name || "user",
+              "hash",
+              "user"
+            );
+          }
+          targetDb.prepare(`
+            INSERT OR REPLACE INTO orders (
+              id, invoice_number, user_id, customer_name, customer_email, customer_phone,
+              shipping_address, customer_notes, shipping_province, shipping_city, shipping_district,
+              courier_name, courier_service, tracking_number, subtotal_amount, shipping_cost,
+              voucher_id, voucher_code, discount_amount, grand_total, status, payment_method,
+              payment_url, snap_token, expired_at, paid_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            ord.id,
+            ord.invoice_number,
+            ord.user_id || null,
+            ord.customer_name,
+            ord.customer_email || null,
+            ord.customer_phone,
+            ord.shipping_address,
+            ord.customer_notes || null,
+            ord.shipping_province || "",
+            ord.shipping_city || "",
+            ord.shipping_district || "",
+            ord.courier_name || "JNE Express",
+            ord.courier_service || "REG",
+            ord.tracking_number || null,
+            ord.subtotal_amount || 0,
+            ord.shipping_cost || 0,
+            ord.voucher_id || null,
+            ord.voucher_code || null,
+            ord.discount_amount || 0,
+            ord.grand_total,
+            ord.status || "PENDING",
+            ord.payment_method || "qris",
+            ord.payment_url || null,
+            ord.snap_token || null,
+            ord.expired_at || (/* @__PURE__ */ new Date()).toISOString(),
+            ord.paid_at || null,
+            ord.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+            ord.updated_at || (/* @__PURE__ */ new Date()).toISOString()
+          );
+        } catch (e) {
+        }
+      }
+      const orderIds = ords.map((o) => o.id);
+      if (orderIds.length > 0) {
+        const { data: oItems } = await client.from("order_items").select("*").in("order_id", orderIds);
+        if (oItems && oItems.length > 0) {
+          for (const it of oItems) {
+            try {
+              targetDb.prepare(`
+                INSERT OR REPLACE INTO order_items (
+                  id, order_id, product_id, product_name_snapshot, price_snapshot, quantity, subtotal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                it.id,
+                it.order_id,
+                it.product_id || null,
+                it.product_name_snapshot || it.name || "Produk",
+                it.price_snapshot || it.price || 0,
+                it.quantity || 1,
+                it.subtotal || 0
+              );
+            } catch (e) {
+            }
+          }
+        }
+      }
+      console.log(`[Supabase] Synced ${ords.length} orders into local engine.`);
+    }
   } catch (err) {
     console.warn("[Supabase] Initial sync notice:", err);
+  }
+}
+async function fetchSupabaseOrder(idOrInvoice) {
+  if (!client) return null;
+  try {
+    let order = null;
+    if (idOrInvoice.startsWith("INV-")) {
+      const { data, error } = await client.from("orders").select("*").eq("invoice_number", idOrInvoice).maybeSingle();
+      if (!error && data) order = data;
+    } else {
+      const { data, error } = await client.from("orders").select("*").eq("id", idOrInvoice).maybeSingle();
+      if (!error && data) {
+        order = data;
+      } else {
+        const resInv = await client.from("orders").select("*").eq("invoice_number", idOrInvoice).maybeSingle();
+        if (!resInv.error && resInv.data) order = resInv.data;
+      }
+    }
+    if (!order) return null;
+    const { data: items } = await client.from("order_items").select("*").eq("order_id", order.id);
+    return {
+      ...order,
+      items: items || []
+    };
+  } catch (err) {
+    console.warn("[Supabase] fetchSupabaseOrder error:", err);
+    return null;
+  }
+}
+async function upsertSupabaseChatRoom(room) {
+  if (!client) return false;
+  try {
+    const row = {
+      id: room.id,
+      user_id: room.user_id || null,
+      user_name: room.user_name || "Pelanggan",
+      last_message: room.last_message || "",
+      last_message_at: room.last_message_at || (/* @__PURE__ */ new Date()).toISOString(),
+      unread_admin: room.unread_admin ?? 0,
+      unread_user: room.unread_user ?? 0,
+      bot_enabled: room.bot_enabled ?? 1,
+      created_at: room.created_at || (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const { error } = await client.from("chat_rooms").upsert(row);
+    if (error) {
+      console.warn("[Supabase] upsertChatRoom error:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[Supabase] upsertChatRoom exception:", err);
+    return false;
+  }
+}
+async function insertSupabaseChatMessage(msg) {
+  if (!client) return false;
+  try {
+    const row = {
+      id: msg.id,
+      room_id: msg.room_id,
+      sender_type: msg.sender_type,
+      sender_name: msg.sender_name,
+      message: msg.message,
+      product_payload: msg.product_payload ? typeof msg.product_payload === "string" ? JSON.parse(msg.product_payload) : msg.product_payload : null,
+      created_at: msg.created_at || (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const { error } = await client.from("chat_messages").insert(row);
+    if (error) {
+      console.warn("[Supabase] insertChatMessage error:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[Supabase] insertChatMessage exception:", err);
+    return false;
+  }
+}
+async function getSupabaseChatMessages(roomId) {
+  if (!client) return null;
+  try {
+    const { data: room } = await client.from("chat_rooms").select("*").eq("id", roomId).maybeSingle();
+    const { data: messages, error } = await client.from("chat_messages").select("*").eq("room_id", roomId).order("created_at", { ascending: true });
+    if (error) {
+      console.warn("[Supabase] getSupabaseChatMessages error:", error);
+      return null;
+    }
+    const parsedMessages = (messages || []).map((m) => ({
+      ...m,
+      product_payload: m.product_payload ? typeof m.product_payload === "string" ? JSON.parse(m.product_payload) : m.product_payload : null
+    }));
+    return {
+      room: room || null,
+      messages: parsedMessages
+    };
+  } catch (err) {
+    console.warn("[Supabase] getSupabaseChatMessages exception:", err);
+    return null;
+  }
+}
+async function getSupabaseChatRooms() {
+  if (!client) return null;
+  try {
+    const { data: rooms, error } = await client.from("chat_rooms").select("*").order("last_message_at", { ascending: false });
+    if (error) {
+      console.warn("[Supabase] getSupabaseChatRooms error:", error);
+      return null;
+    }
+    return rooms || [];
+  } catch (err) {
+    console.warn("[Supabase] getSupabaseChatRooms exception:", err);
+    return null;
+  }
+}
+async function updateSupabaseRoomRead(roomId, role) {
+  if (!client) return false;
+  try {
+    const updateData = role === "admin" ? { unread_admin: 0 } : { unread_user: 0 };
+    const { error } = await client.from("chat_rooms").update(updateData).eq("id", roomId);
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+async function toggleSupabaseBotStatus(roomId, botEnabled) {
+  if (!client) return false;
+  try {
+    const { error } = await client.from("chat_rooms").update({ bot_enabled: botEnabled }).eq("id", roomId);
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+async function deleteSupabaseRoom(roomId) {
+  if (!client) return false;
+  try {
+    await client.from("chat_messages").delete().eq("room_id", roomId);
+    const { error } = await client.from("chat_rooms").delete().eq("id", roomId);
+    return !error;
+  } catch (err) {
+    return false;
   }
 }
 var supabase = client;
@@ -2003,7 +2249,7 @@ async function createSnapTransaction(payload) {
     }
   };
   try {
-    const response = await fetch(SNAP_API_URL, {
+    let response = await fetch(SNAP_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2012,9 +2258,44 @@ async function createSnapTransaction(payload) {
       },
       body: JSON.stringify(requestBody)
     });
-    const data = await response.json();
+    let data = await response.json();
+    if (!response.ok && requestBody.enabled_payments) {
+      console.warn("[Midtrans] Initial snap creation notice, retrying without payment method restriction...", data);
+      const fallbackBody = { ...requestBody };
+      delete fallbackBody.enabled_payments;
+      response = await fetch(SNAP_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: authHeader
+        },
+        body: JSON.stringify(fallbackBody)
+      });
+      data = await response.json();
+    }
     if (!response.ok) {
-      console.error("[Midtrans] Error from Snap API:", data);
+      console.warn("[Midtrans] Secondary retry with base transaction details...", data);
+      const minimalBody = {
+        transaction_details: {
+          order_id: payload.invoiceNumber,
+          gross_amount: Math.max(1e3, Math.round(payload.grandTotal))
+        },
+        customer_details: requestBody.customer_details
+      };
+      response = await fetch(SNAP_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: authHeader
+        },
+        body: JSON.stringify(minimalBody)
+      });
+      data = await response.json();
+    }
+    if (!response.ok) {
+      console.error("[Midtrans] Error from Snap API after retries:", data);
       throw new Error(data.error_messages ? data.error_messages.join(", ") : "Gagal membuat Snap token");
     }
     console.log(`[Midtrans] Snap transaction created for ${payload.invoiceNumber}: token=${data.token}`);
@@ -2563,6 +2844,106 @@ initDb();
 if (isSupabaseConfigured()) {
   syncFromSupabase(db_default).catch((e) => console.warn("[Supabase Sync Startup Notice]:", e));
 }
+async function getOrSyncOrder(idOrInvoice) {
+  if (!idOrInvoice) return null;
+  try {
+    db_default.exec("PRAGMA foreign_keys = OFF;");
+  } catch (e) {
+  }
+  let order = db_default.prepare("SELECT * FROM orders WHERE id = ? OR invoice_number = ?").get(idOrInvoice, idOrInvoice);
+  if (order) return order;
+  if (isSupabaseConfigured() && supabase) {
+    try {
+      const sbOrder = await fetchSupabaseOrder(idOrInvoice);
+      if (sbOrder) {
+        if (sbOrder.user_id) {
+          try {
+            const uId = sbOrder.user_id;
+            const uName = sbOrder.customer_name || "user";
+            const existingById = db_default.prepare("SELECT id FROM users WHERE id = ?").get(uId);
+            if (!existingById) {
+              const existingByName = db_default.prepare("SELECT id FROM users WHERE username = ?").get(uName);
+              if (existingByName) {
+                db_default.prepare("UPDATE users SET id = ? WHERE username = ?").run(uId, uName);
+              } else {
+                db_default.prepare("INSERT OR REPLACE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+                  uId,
+                  uName,
+                  "hash",
+                  "user"
+                );
+              }
+            }
+          } catch (e) {
+          }
+        }
+        try {
+          db_default.prepare(`
+            INSERT OR REPLACE INTO orders (
+              id, invoice_number, user_id, customer_name, customer_email, customer_phone,
+              shipping_address, customer_notes, shipping_province, shipping_city, shipping_district,
+              courier_name, courier_service, tracking_number, subtotal_amount, shipping_cost,
+              voucher_id, voucher_code, discount_amount, grand_total, status, payment_method,
+              payment_url, snap_token, expired_at, paid_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            sbOrder.id,
+            sbOrder.invoice_number,
+            sbOrder.user_id || null,
+            sbOrder.customer_name,
+            sbOrder.customer_email || null,
+            sbOrder.customer_phone,
+            sbOrder.shipping_address,
+            sbOrder.customer_notes || null,
+            sbOrder.shipping_province || "",
+            sbOrder.shipping_city || "",
+            sbOrder.shipping_district || "",
+            sbOrder.courier_name || "JNE Express",
+            sbOrder.courier_service || "REG",
+            sbOrder.tracking_number || null,
+            sbOrder.subtotal_amount || 0,
+            sbOrder.shipping_cost || 0,
+            sbOrder.voucher_id || null,
+            sbOrder.voucher_code || null,
+            sbOrder.discount_amount || 0,
+            sbOrder.grand_total,
+            sbOrder.status || "PENDING",
+            sbOrder.payment_method || "qris",
+            sbOrder.payment_url || null,
+            sbOrder.snap_token || null,
+            sbOrder.expired_at || (/* @__PURE__ */ new Date()).toISOString(),
+            sbOrder.paid_at || null,
+            sbOrder.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+            sbOrder.updated_at || (/* @__PURE__ */ new Date()).toISOString()
+          );
+          if (Array.isArray(sbOrder.items) && sbOrder.items.length > 0) {
+            for (const it of sbOrder.items) {
+              db_default.prepare(`
+                INSERT OR REPLACE INTO order_items (
+                  id, order_id, product_id, product_name_snapshot, price_snapshot, quantity, subtotal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                it.id,
+                sbOrder.id,
+                it.product_id || null,
+                it.product_name_snapshot || it.name || "Produk",
+                it.price_snapshot || it.price || 0,
+                it.quantity || 1,
+                it.subtotal || 0
+              );
+            }
+          }
+        } catch (dbErr) {
+          console.warn("[getOrSyncOrder sync warning]:", dbErr);
+        }
+        return db_default.prepare("SELECT * FROM orders WHERE id = ? OR invoice_number = ?").get(idOrInvoice, idOrInvoice) || sbOrder;
+      }
+    } catch (sbErr) {
+      console.warn("[getOrSyncOrder error]:", sbErr);
+    }
+  }
+  return null;
+}
 var rateLimitMap = /* @__PURE__ */ new Map();
 var rateLimiter = (maxRequests = 10, windowMs = 6e4) => {
   return (req, res, next) => {
@@ -2730,9 +3111,12 @@ app.get("/api/products", async (req, res) => {
     params.push(category);
   }
   if (search && search.trim() !== "") {
-    whereClauses.push("(p.name LIKE ? OR p.compatibilityText LIKE ? OR p.description LIKE ?)");
-    const searchTerm = `%${search.trim()}%`;
-    params.push(searchTerm, searchTerm, searchTerm);
+    const tokens = search.trim().split(/\s+/).filter(Boolean);
+    tokens.forEach((tok) => {
+      whereClauses.push("(p.name LIKE ? OR p.compatibilityText LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.fitmentTag LIKE ?)");
+      const searchTerm = `%${tok}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    });
   }
   if (whereClauses.length > 0) {
     query += " WHERE " + whereClauses.join(" AND ");
@@ -2946,6 +3330,31 @@ app.post("/api/checkout", rateLimiter(10, 6e4), authMiddleware, async (req, res)
   const userId = req.user ? req.user.id : null;
   if (!userId) {
     return res.status(401).json({ error: "Silakan login terlebih dahulu untuk melakukan checkout." });
+  }
+  try {
+    db_default.exec("PRAGMA foreign_keys = OFF;");
+  } catch (e) {
+  }
+  if (userId) {
+    try {
+      const uname = req.user.username || customer?.name || "user";
+      const existingById = db_default.prepare("SELECT id FROM users WHERE id = ?").get(userId);
+      if (!existingById) {
+        const existingByName = db_default.prepare("SELECT id FROM users WHERE username = ?").get(uname);
+        if (existingByName) {
+          db_default.prepare("UPDATE users SET id = ? WHERE username = ?").run(userId, uname);
+        } else {
+          db_default.prepare("INSERT OR REPLACE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+            userId,
+            uname,
+            "hash",
+            req.user.role || "user"
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("[Checkout User Sync Warning]:", e);
+    }
   }
   const rawNote = notes || customerNotes || orderNote || customer?.notes;
   let buyerNotes = rawNote ? String(rawNote).trim() : null;
@@ -3202,11 +3611,14 @@ app.get("/api/payment/config", (req, res) => {
 });
 app.get("/api/orders/:invoiceNumber", async (req, res) => {
   const { invoiceNumber } = req.params;
-  const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invoiceNumber);
+  const order = await getOrSyncOrder(invoiceNumber);
   if (!order) {
     return res.status(404).json({ error: "Pesanan tidak ditemukan" });
   }
-  const items = db_default.prepare("SELECT * FROM order_items WHERE order_id = ?").all(order.id);
+  let items = db_default.prepare("SELECT * FROM order_items WHERE order_id = ?").all(order.id);
+  if ((!items || items.length === 0) && Array.isArray(order.items) && order.items.length > 0) {
+    items = order.items;
+  }
   const isOrderCod = (order.payment_method || "").toLowerCase() === "cod";
   if (order.status === "PENDING" && !order.snap_token && isMidtransConfigured() && !isOrderCod) {
     try {
@@ -3240,6 +3652,9 @@ app.get("/api/orders/:invoiceNumber", async (req, res) => {
           snapRes.redirect_url,
           order.id
         );
+        if (supabase) {
+          supabase.from("orders").update({ snap_token: snapRes.token, payment_url: snapRes.redirect_url }).eq("id", order.id).then();
+        }
       }
     } catch (e) {
       console.warn("[Midtrans] Error generating snap token on invoice view:", e.message);
@@ -3250,67 +3665,98 @@ app.get("/api/orders/:invoiceNumber", async (req, res) => {
     items
   });
 });
-app.get("/api/orders/track/search", (req, res) => {
+app.get("/api/orders/track/search", async (req, res) => {
   const { invoice, phone } = req.query;
   if (!invoice) {
     return res.status(400).json({ error: "Nomor invoice wajib diisi" });
   }
-  const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invoice);
+  const order = await getOrSyncOrder(invoice);
   if (!order) {
     return res.status(404).json({ error: "Pesanan dengan nomor invoice tersebut tidak ditemukan" });
   }
   if (phone && phone.trim() !== "") {
     const cleanedSearch = phone.replace(/[^0-9]/g, "");
-    const cleanedOrder = order.customer_phone.replace(/[^0-9]/g, "");
+    const cleanedOrder = (order.customer_phone || "").replace(/[^0-9]/g, "");
     if (!cleanedOrder.includes(cleanedSearch) && !order.customer_email?.toLowerCase().includes(phone.toLowerCase())) {
       return res.status(403).json({ error: "Nomor WhatsApp atau Email tidak cocok dengan data pemesan" });
     }
   }
-  const items = db_default.prepare("SELECT * FROM order_items WHERE order_id = ?").all(order.id);
+  let items = db_default.prepare("SELECT * FROM order_items WHERE order_id = ?").all(order.id);
+  if ((!items || items.length === 0) && Array.isArray(order.items) && order.items.length > 0) {
+    items = order.items;
+  }
   res.json({
     ...order,
     items
   });
 });
-app.post("/api/orders/:invoiceNumber/pay", (req, res) => {
+app.post("/api/orders/:invoiceNumber/pay", async (req, res) => {
   const { invoiceNumber } = req.params;
-  const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invoiceNumber);
+  const order = await getOrSyncOrder(invoiceNumber);
   if (!order) return res.status(404).json({ error: "Pesanan tidak ditemukan" });
   if (order.status === "PAID") return res.json({ success: true, message: "Pesanan sudah berstatus LUNAS." });
   if (order.status === "CANCELLED") {
     return res.status(400).json({ error: "Pesanan sudah dibatalkan atau kedaluwarsa. Tidak dapat dibayar." });
   }
-  db_default.prepare(`UPDATE orders SET status = 'PAID', paid_at = datetime('now') WHERE id = ?`).run(order.id);
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+  db_default.prepare(`UPDATE orders SET status = 'PAID', paid_at = ? WHERE id = ?`).run(nowIso, order.id);
+  if (supabase) {
+    try {
+      await supabase.from("orders").update({
+        status: "PAID",
+        paid_at: nowIso,
+        updated_at: nowIso
+      }).eq("id", order.id);
+    } catch (sbErr) {
+      console.warn("[Payment Pay] Supabase sync warning:", sbErr);
+    }
+  }
   console.log(`[Payment Success] Pesanan ${invoiceNumber} telah dibayar.`);
   res.json({ success: true, message: "Pembayaran berhasil dikonfirmasi!", status: "PAID" });
 });
-app.post("/api/orders/:invoiceNumber/cancel", (req, res) => {
+app.post("/api/orders/:invoiceNumber/cancel", async (req, res) => {
   const { invoiceNumber } = req.params;
-  const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invoiceNumber);
+  const order = await getOrSyncOrder(invoiceNumber);
   if (!order) return res.status(404).json({ error: "Pesanan tidak ditemukan" });
   if (order.status === "CANCELLED") return res.json({ success: true, message: "Pesanan sudah dibatalkan." });
   if (order.status === "SHIPPED" || order.status === "COMPLETED") {
     return res.status(400).json({ error: "Pesanan sudah dikirim/selesai dan tidak dapat dibatalkan." });
   }
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   db_default.exec("BEGIN TRANSACTION");
   try {
-    const items = db_default.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?").all(order.id);
+    let items = db_default.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?").all(order.id);
+    if ((!items || items.length === 0) && Array.isArray(order.items)) {
+      items = order.items;
+    }
     const restoreStock = db_default.prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
     for (const item of items) {
-      if (item.product_id) restoreStock.run(item.quantity, item.product_id);
+      if (item.product_id) {
+        restoreStock.run(item.quantity, item.product_id);
+        if (supabase) {
+          Promise.resolve(supabase.rpc("increment_stock", { p_id: item.product_id, qty: item.quantity })).catch(() => {
+          });
+        }
+      }
     }
     if (order.voucher_id) {
       db_default.prepare("UPDATE vouchers SET used_count = MAX(0, used_count - 1) WHERE id = ?").run(order.voucher_id);
     }
     db_default.prepare(`UPDATE orders SET status = 'CANCELLED' WHERE id = ?`).run(order.id);
     db_default.exec("COMMIT");
+    if (supabase) {
+      await supabase.from("orders").update({
+        status: "CANCELLED",
+        updated_at: nowIso
+      }).eq("id", order.id);
+    }
     res.json({ success: true, message: "Pesanan berhasil dibatalkan dan stok dikembalikan." });
   } catch (err) {
     db_default.exec("ROLLBACK");
     res.status(500).json({ error: err.message });
   }
 });
-app.post(["/api/webhooks/payment", "/api/webhooks/midtrans"], (req, res) => {
+app.post(["/api/webhooks/payment", "/api/webhooks/midtrans"], async (req, res) => {
   const signature = req.headers["x-callback-token"] || req.headers["signature-key"];
   const { order_id, transaction_status, gross_amount, status_code, signature_key, fraud_status, payment_type } = req.body;
   console.log("[Payment Webhook Received]", req.body);
@@ -3328,16 +3774,25 @@ app.post(["/api/webhooks/payment", "/api/webhooks/midtrans"], (req, res) => {
   } else if (signature && signature !== WEBHOOK_SIGNATURE_KEY && !isMidtransConfigured()) {
     return res.status(403).json({ error: "Signature key tidak valid" });
   }
-  const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invoiceNumber);
+  const order = await getOrSyncOrder(invoiceNumber);
   if (!order) {
     return res.status(404).json({ error: "Pesanan tidak ditemukan" });
   }
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   if (transaction_status === "settlement" || transaction_status === "capture" && (!fraud_status || fraud_status === "accept") || transaction_status === "PAID") {
     if (order.status === "PAID") {
       return res.json({ status: "ok", message: "Order sudah berstatus PAID (Idempotent)" });
     }
     const payMethod = payment_type || order.payment_method;
-    db_default.prepare(`UPDATE orders SET status = 'PAID', paid_at = datetime('now'), payment_method = ? WHERE id = ?`).run(payMethod, order.id);
+    db_default.prepare(`UPDATE orders SET status = 'PAID', paid_at = ?, payment_method = ? WHERE id = ?`).run(nowIso, payMethod, order.id);
+    if (supabase) {
+      await supabase.from("orders").update({
+        status: "PAID",
+        paid_at: nowIso,
+        payment_method: payMethod,
+        updated_at: nowIso
+      }).eq("id", order.id);
+    }
     return res.json({ status: "ok", message: "Status order berhasil diperbarui menjadi PAID" });
   }
   if (transaction_status === "expire" || transaction_status === "cancel" || transaction_status === "deny" || transaction_status === "CANCELLED") {
@@ -3346,16 +3801,31 @@ app.post(["/api/webhooks/payment", "/api/webhooks/midtrans"], (req, res) => {
     }
     db_default.exec("BEGIN TRANSACTION");
     try {
-      const items = db_default.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?").all(order.id);
+      let items = db_default.prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?").all(order.id);
+      if ((!items || items.length === 0) && Array.isArray(order.items)) {
+        items = order.items;
+      }
       const restoreStock = db_default.prepare("UPDATE products SET stock = stock + ? WHERE id = ?");
       for (const item of items) {
-        if (item.product_id) restoreStock.run(item.quantity, item.product_id);
+        if (item.product_id) {
+          restoreStock.run(item.quantity, item.product_id);
+          if (supabase) {
+            Promise.resolve(supabase.rpc("increment_stock", { p_id: item.product_id, qty: item.quantity })).catch(() => {
+            });
+          }
+        }
       }
       if (order.voucher_id) {
         db_default.prepare("UPDATE vouchers SET used_count = MAX(0, used_count - 1) WHERE id = ?").run(order.voucher_id);
       }
       db_default.prepare(`UPDATE orders SET status = 'CANCELLED' WHERE id = ?`).run(order.id);
       db_default.exec("COMMIT");
+      if (supabase) {
+        await supabase.from("orders").update({
+          status: "CANCELLED",
+          updated_at: nowIso
+        }).eq("id", order.id);
+      }
       return res.json({ status: "ok", message: "Order dibatalkan dan stok dikembalikan" });
     } catch (e) {
       db_default.exec("ROLLBACK");
@@ -3492,10 +3962,42 @@ app.post("/api/auth/register", async (req, res) => {
 app.get("/api/auth/me", authMiddleware, (req, res) => {
   res.json({ user: req.user });
 });
-app.get("/api/user/orders", authMiddleware, (req, res) => {
+app.get("/api/user/orders", authMiddleware, async (req, res) => {
   try {
     const userId = req.user?.id;
     const username = req.user?.username;
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        let sbQuery = supabase.from("orders").select("*").order("created_at", { ascending: false });
+        if (userId && username) {
+          sbQuery = sbQuery.or(`user_id.eq.${userId},customer_name.eq.${username}`);
+        } else if (userId) {
+          sbQuery = sbQuery.eq("user_id", userId);
+        } else if (username) {
+          sbQuery = sbQuery.eq("customer_name", username);
+        }
+        const { data: sbOrders, error: sbErr } = await sbQuery;
+        if (!sbErr && sbOrders && sbOrders.length > 0) {
+          const orderIds = sbOrders.map((o) => o.id);
+          const { data: items } = await supabase.from("order_items").select("*").in("order_id", orderIds);
+          const itemsMap = /* @__PURE__ */ new Map();
+          if (items) {
+            for (const it of items) {
+              const arr = itemsMap.get(it.order_id) || [];
+              arr.push(it);
+              itemsMap.set(it.order_id, arr);
+            }
+          }
+          const enriched = sbOrders.map((o) => ({
+            ...o,
+            items: itemsMap.get(o.id) || []
+          }));
+          return res.json(enriched);
+        }
+      } catch (sbE) {
+        console.warn("[User Orders Supabase Fallback]", sbE);
+      }
+    }
     const orders = db_default.prepare(`
       SELECT * FROM orders 
       WHERE user_id = ? OR customer_name = ?
@@ -3578,26 +4080,36 @@ app.get("/api/admin/orders", authMiddleware, adminMiddleware, async (req, res) =
 app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
   const { status, trackingNumber } = req.body;
-  const order = db_default.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+  const order = await getOrSyncOrder(id);
   if (!order) return res.status(404).json({ error: "Pesanan tidak ditemukan" });
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   if (status === "SHIPPED") {
     if (!trackingNumber || trackingNumber.trim() === "") {
       return res.status(400).json({ error: "Nomor resi wajib diisi saat mengubah status menjadi Dikirim" });
     }
-    db_default.prepare("UPDATE orders SET status = ?, tracking_number = ? WHERE id = ?").run("SHIPPED", trackingNumber.trim(), id);
+    db_default.prepare("UPDATE orders SET status = ?, tracking_number = ?, updated_at = ? WHERE id = ?").run("SHIPPED", trackingNumber.trim(), nowIso, id);
     if (supabase) {
       await supabase.from("orders").update({
         status: "SHIPPED",
         tracking_number: trackingNumber.trim(),
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        updated_at: nowIso
       }).eq("id", id);
     }
   } else if (status === "COMPLETED") {
-    db_default.prepare("UPDATE orders SET status = ? WHERE id = ?").run("COMPLETED", id);
+    db_default.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run("COMPLETED", nowIso, id);
     if (supabase) {
       await supabase.from("orders").update({
         status: "COMPLETED",
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        updated_at: nowIso
+      }).eq("id", id);
+    }
+  } else if (status === "PAID") {
+    db_default.prepare("UPDATE orders SET status = ?, paid_at = ?, updated_at = ? WHERE id = ?").run("PAID", nowIso, nowIso, id);
+    if (supabase) {
+      await supabase.from("orders").update({
+        status: "PAID",
+        paid_at: nowIso,
+        updated_at: nowIso
       }).eq("id", id);
     }
   } else if (status === "CANCELLED") {
@@ -3617,12 +4129,12 @@ app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, async
       if (order.voucher_id) {
         db_default.prepare("UPDATE vouchers SET used_count = MAX(0, used_count - 1) WHERE id = ?").run(order.voucher_id);
       }
-      db_default.prepare(`UPDATE orders SET status = 'CANCELLED' WHERE id = ?`).run(id);
+      db_default.prepare(`UPDATE orders SET status = 'CANCELLED', updated_at = ? WHERE id = ?`).run(nowIso, id);
       db_default.exec("COMMIT");
       if (supabase) {
         await supabase.from("orders").update({
           status: "CANCELLED",
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+          updated_at: nowIso
         }).eq("id", id);
       }
     } catch (e) {
@@ -3630,11 +4142,11 @@ app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, async
       return res.status(500).json({ error: e.message });
     }
   } else {
-    db_default.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, id);
+    db_default.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(status, nowIso, id);
     if (supabase) {
       await supabase.from("orders").update({
         status,
-        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        updated_at: nowIso
       }).eq("id", id);
     }
   }
@@ -3642,7 +4154,7 @@ app.patch("/api/admin/orders/:id/status", authMiddleware, adminMiddleware, async
 });
 app.post("/api/admin/orders/:id/biteship-ship", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
-  const order = db_default.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+  const order = await getOrSyncOrder(id);
   if (!order) return res.status(404).json({ error: "Pesanan tidak ditemukan" });
   if (order.status !== "PAID") {
     return res.status(400).json({ error: "Hanya pesanan berstatus Lunas (PAID) yang dapat di-request pickup" });
@@ -3677,11 +4189,21 @@ app.post("/api/admin/orders/:id/biteship-ship", authMiddleware, adminMiddleware,
       console.warn("[Biteship] Error during booking pickup:", err.message);
     }
   }
+  const nowIso = (/* @__PURE__ */ new Date()).toISOString();
   db_default.prepare(`
     UPDATE orders 
-    SET status = 'SHIPPED', tracking_number = ?, biteship_order_id = ?, biteship_tracking_id = ?
+    SET status = 'SHIPPED', tracking_number = ?, biteship_order_id = ?, biteship_tracking_id = ?, updated_at = ?
     WHERE id = ?
-  `).run(trackingNumber, biteshipOrderId, biteshipTrackingId, id);
+  `).run(trackingNumber, biteshipOrderId, biteshipTrackingId, nowIso, id);
+  if (supabase) {
+    await supabase.from("orders").update({
+      status: "SHIPPED",
+      tracking_number: trackingNumber,
+      biteship_order_id: biteshipOrderId,
+      biteship_tracking_id: biteshipTrackingId,
+      updated_at: nowIso
+    }).eq("id", id);
+  }
   res.json({
     success: true,
     message: `Pickup kurir ${order.courier_name} berhasil dibuat!`,
@@ -3691,7 +4213,7 @@ app.post("/api/admin/orders/:id/biteship-ship", authMiddleware, adminMiddleware,
 });
 app.get("/api/orders/:invoiceNumber/biteship-track", async (req, res) => {
   const { invoiceNumber } = req.params;
-  const order = db_default.prepare("SELECT * FROM orders WHERE invoice_number = ?").get(invoiceNumber);
+  const order = await getOrSyncOrder(invoiceNumber);
   if (!order) return res.status(404).json({ error: "Pesanan tidak ditemukan" });
   let liveTracking = null;
   if (isBiteshipConfigured() && (order.biteship_tracking_id || order.tracking_number)) {
@@ -3980,90 +4502,176 @@ app.post("/api/chat/send", optionalAuthMiddleware, async (req, res) => {
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const senderType = isOfficialAdminReply ? "admin" : "user";
     const senderName = isOfficialAdminReply ? "Admin Jawir Garage" : req.user ? req.user.username : guestName || "Pelanggan";
+    const uId = req.user ? req.user.id : guestId || null;
+    const uName = isOfficialAdminReply ? guestName || "Pelanggan" : senderName;
     if (!room) {
-      const uId = req.user ? req.user.id : guestId || null;
-      const uName = isOfficialAdminReply ? guestName || "Pelanggan" : senderName;
-      db_default.prepare(`
-        INSERT INTO chat_rooms (
-          id, user_id, user_name, last_message, last_message_at,
-          unread_admin, unread_user, bot_enabled, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-      `).run(
-        roomId,
-        uId,
-        uName,
-        trimmedMsg,
-        nowIso,
-        isOfficialAdminReply ? 0 : 1,
-        isOfficialAdminReply ? 1 : 0,
-        nowIso
-      );
+      try {
+        db_default.exec("PRAGMA foreign_keys = OFF;");
+      } catch (e) {
+      }
+      if (req.user?.id) {
+        try {
+          const existingById = db_default.prepare("SELECT id FROM users WHERE id = ?").get(req.user.id);
+          if (!existingById) {
+            const existingByName = db_default.prepare("SELECT id FROM users WHERE username = ?").get(senderName);
+            if (existingByName) {
+              db_default.prepare("UPDATE users SET id = ? WHERE username = ?").run(req.user.id, senderName);
+            } else {
+              db_default.prepare("INSERT OR REPLACE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)").run(
+                req.user.id,
+                senderName,
+                "hash",
+                req.user.role || "user"
+              );
+            }
+          }
+        } catch (e) {
+        }
+      }
+      try {
+        db_default.prepare(`
+          INSERT INTO chat_rooms (
+            id, user_id, user_name, last_message, last_message_at,
+            unread_admin, unread_user, bot_enabled, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+        `).run(
+          roomId,
+          uId,
+          uName,
+          trimmedMsg,
+          nowIso,
+          isOfficialAdminReply ? 0 : 1,
+          isOfficialAdminReply ? 1 : 0,
+          nowIso
+        );
+      } catch (e) {
+      }
       room = { id: roomId, user_id: uId, user_name: uName, bot_enabled: 1 };
     } else {
-      if (isOfficialAdminReply) {
-        db_default.prepare(`
-          UPDATE chat_rooms 
-          SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
-          WHERE id = ?
-        `).run(trimmedMsg, nowIso, roomId);
-      } else {
-        db_default.prepare(`
-          UPDATE chat_rooms 
-          SET last_message = ?, last_message_at = ?, unread_admin = unread_admin + 1
-          WHERE id = ?
-        `).run(trimmedMsg, nowIso, roomId);
+      try {
+        if (isOfficialAdminReply) {
+          db_default.prepare(`
+            UPDATE chat_rooms 
+            SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
+            WHERE id = ?
+          `).run(trimmedMsg, nowIso, roomId);
+        } else {
+          db_default.prepare(`
+            UPDATE chat_rooms 
+            SET last_message = ?, last_message_at = ?, unread_admin = unread_admin + 1
+            WHERE id = ?
+          `).run(trimmedMsg, nowIso, roomId);
+        }
+      } catch (e) {
       }
     }
     const msgId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-    db_default.prepare(`
-      INSERT INTO chat_messages (
-        id, room_id, sender_type, sender_name, message, product_payload, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      msgId,
-      roomId,
-      senderType,
-      senderName,
-      trimmedMsg,
-      productContext ? JSON.stringify(productContext) : null,
-      nowIso
-    );
+    try {
+      db_default.prepare(`
+        INSERT INTO chat_messages (
+          id, room_id, sender_type, sender_name, message, product_payload, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        msgId,
+        roomId,
+        senderType,
+        senderName,
+        trimmedMsg,
+        productContext ? JSON.stringify(productContext) : null,
+        nowIso
+      );
+    } catch (e) {
+    }
+    if (isSupabaseConfigured()) {
+      try {
+        await upsertSupabaseChatRoom({
+          id: roomId,
+          user_id: uId,
+          user_name: uName,
+          last_message: trimmedMsg,
+          last_message_at: nowIso,
+          unread_admin: isOfficialAdminReply ? 0 : 1,
+          unread_user: isOfficialAdminReply ? 1 : 0,
+          bot_enabled: room ? room.bot_enabled ?? 1 : 1,
+          created_at: room?.created_at || nowIso
+        });
+        await insertSupabaseChatMessage({
+          id: msgId,
+          room_id: roomId,
+          sender_type: senderType,
+          sender_name: senderName,
+          message: trimmedMsg,
+          product_payload: productContext || null,
+          created_at: nowIso
+        });
+      } catch (sbErr) {
+        console.warn("[Supabase Chat Sync Error]:", sbErr);
+      }
+    }
     let botReplyMsg = null;
     const isBotActive = room.bot_enabled !== 0;
     if (!isOfficialAdminReply && isBotActive) {
-      const botResponse = generateChatbotReply(trimmedMsg, {
-        userName: senderName,
-        userId: req.user?.id || null,
-        attachedProduct: productContext || null
-      });
-      if (botResponse && botResponse.reply) {
-        const botMsgId = "msg_bot_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-        const botTime = (/* @__PURE__ */ new Date()).toISOString();
-        db_default.prepare(`
-          INSERT INTO chat_messages (
-            id, room_id, sender_type, sender_name, message, product_payload, created_at
-          ) VALUES (?, ?, 'bot', 'Jawir Bot (Asisten Virtual)', ?, ?, ?)
-        `).run(
-          botMsgId,
-          roomId,
-          botResponse.reply,
-          botResponse.productPayload ? JSON.stringify(botResponse.productPayload) : null,
-          botTime
-        );
-        db_default.prepare(`
-          UPDATE chat_rooms 
-          SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
-          WHERE id = ?
-        `).run(botResponse.reply.substring(0, 100), botTime, roomId);
-        botReplyMsg = {
-          id: botMsgId,
-          room_id: roomId,
-          sender_type: "bot",
-          sender_name: "Jawir Bot (Asisten Virtual)",
-          message: botResponse.reply,
-          product_payload: botResponse.productPayload || null,
-          created_at: botTime
-        };
+      try {
+        const botResponse = generateChatbotReply(trimmedMsg, {
+          userName: senderName,
+          userId: req.user?.id || null,
+          attachedProduct: productContext || null
+        });
+        if (botResponse && botResponse.reply) {
+          const botMsgId = "msg_bot_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+          const botTime = (/* @__PURE__ */ new Date()).toISOString();
+          try {
+            db_default.prepare(`
+              INSERT INTO chat_messages (
+                id, room_id, sender_type, sender_name, message, product_payload, created_at
+              ) VALUES (?, ?, 'bot', 'Jawir Bot (Asisten Virtual)', ?, ?, ?)
+            `).run(
+              botMsgId,
+              roomId,
+              botResponse.reply,
+              botResponse.productPayload ? JSON.stringify(botResponse.productPayload) : null,
+              botTime
+            );
+            db_default.prepare(`
+              UPDATE chat_rooms 
+              SET last_message = ?, last_message_at = ?, unread_user = unread_user + 1
+              WHERE id = ?
+            `).run(botResponse.reply.substring(0, 100), botTime, roomId);
+          } catch (e) {
+          }
+          botReplyMsg = {
+            id: botMsgId,
+            room_id: roomId,
+            sender_type: "bot",
+            sender_name: "Jawir Bot (Asisten Virtual)",
+            message: botResponse.reply,
+            product_payload: botResponse.productPayload || null,
+            created_at: botTime
+          };
+          if (isSupabaseConfigured()) {
+            try {
+              await insertSupabaseChatMessage({
+                id: botMsgId,
+                room_id: roomId,
+                sender_type: "bot",
+                sender_name: "Jawir Bot (Asisten Virtual)",
+                message: botResponse.reply,
+                product_payload: botResponse.productPayload || null,
+                created_at: botTime
+              });
+              await upsertSupabaseChatRoom({
+                id: roomId,
+                last_message: botResponse.reply.substring(0, 100),
+                last_message_at: botTime,
+                unread_user: 1
+              });
+            } catch (sbErr) {
+              console.warn("[Supabase Bot Sync Error]:", sbErr);
+            }
+          }
+        }
+      } catch (botErr) {
+        console.error("[Bot Generation Error]:", botErr);
       }
     }
     res.json({
@@ -4077,9 +4685,22 @@ app.post("/api/chat/send", optionalAuthMiddleware, async (req, res) => {
     res.status(500).json({ error: "Gagal mengirim pesan chat: " + err.message });
   }
 });
-app.get("/api/chat/messages/:roomId", optionalAuthMiddleware, (req, res) => {
+app.get("/api/chat/messages/:roomId", optionalAuthMiddleware, async (req, res) => {
   try {
     const { roomId } = req.params;
+    if (isSupabaseConfigured()) {
+      try {
+        const sbData = await getSupabaseChatMessages(roomId);
+        if (sbData && sbData.messages && sbData.messages.length > 0) {
+          return res.json({
+            room: sbData.room,
+            messages: sbData.messages
+          });
+        }
+      } catch (e) {
+        console.warn("[Supabase getChatMessages notice]:", e);
+      }
+    }
     const room = db_default.prepare("SELECT * FROM chat_rooms WHERE id = ?").get(roomId);
     const rawMessages = db_default.prepare(
       "SELECT * FROM chat_messages WHERE room_id = ? ORDER BY created_at ASC"
@@ -4105,44 +4726,80 @@ app.get("/api/chat/messages/:roomId", optionalAuthMiddleware, (req, res) => {
     res.status(500).json({ error: "Gagal memuat pesan chat: " + err.message });
   }
 });
-app.post("/api/chat/rooms/:roomId/read", optionalAuthMiddleware, (req, res) => {
+app.post("/api/chat/rooms/:roomId/read", optionalAuthMiddleware, async (req, res) => {
   try {
     const { roomId } = req.params;
     const { role } = req.body;
-    if (role === "admin" && req.user?.role === "admin") {
-      db_default.prepare("UPDATE chat_rooms SET unread_admin = 0 WHERE id = ?").run(roomId);
-    } else {
-      db_default.prepare("UPDATE chat_rooms SET unread_user = 0 WHERE id = ?").run(roomId);
+    try {
+      if (role === "admin" && req.user?.role === "admin") {
+        db_default.prepare("UPDATE chat_rooms SET unread_admin = 0 WHERE id = ?").run(roomId);
+      } else {
+        db_default.prepare("UPDATE chat_rooms SET unread_user = 0 WHERE id = ?").run(roomId);
+      }
+    } catch (e) {
+    }
+    if (isSupabaseConfigured()) {
+      try {
+        await updateSupabaseRoomRead(roomId, role);
+      } catch (e) {
+      }
     }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-app.get("/api/admin/chat/rooms", authMiddleware, adminMiddleware, (req, res) => {
+app.get("/api/admin/chat/rooms", authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    if (isSupabaseConfigured()) {
+      try {
+        const sbRooms = await getSupabaseChatRooms();
+        if (sbRooms && sbRooms.length > 0) {
+          return res.json({ rooms: sbRooms });
+        }
+      } catch (e) {
+      }
+    }
     const rooms = db_default.prepare("SELECT * FROM chat_rooms ORDER BY last_message_at DESC").all();
     res.json({ rooms });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-app.post("/api/admin/chat/rooms/:roomId/toggle-bot", authMiddleware, adminMiddleware, (req, res) => {
+app.post("/api/admin/chat/rooms/:roomId/toggle-bot", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { roomId } = req.params;
-    const room = db_default.prepare("SELECT bot_enabled FROM chat_rooms WHERE id = ?").get(roomId);
-    if (!room) return res.status(404).json({ error: "Chat room tidak ditemukan" });
-    const newBotStatus = room.bot_enabled === 1 ? 0 : 1;
-    db_default.prepare("UPDATE chat_rooms SET bot_enabled = ? WHERE id = ?").run(newBotStatus, roomId);
+    let room = db_default.prepare("SELECT bot_enabled FROM chat_rooms WHERE id = ?").get(roomId);
+    let currentBot = room ? room.bot_enabled ?? 1 : 1;
+    const newBotStatus = currentBot === 1 ? 0 : 1;
+    try {
+      db_default.prepare("UPDATE chat_rooms SET bot_enabled = ? WHERE id = ?").run(newBotStatus, roomId);
+    } catch (e) {
+    }
+    if (isSupabaseConfigured()) {
+      try {
+        await toggleSupabaseBotStatus(roomId, newBotStatus);
+      } catch (e) {
+      }
+    }
     res.json({ success: true, bot_enabled: newBotStatus });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-app.delete("/api/admin/chat/rooms/:roomId", authMiddleware, adminMiddleware, (req, res) => {
+app.delete("/api/admin/chat/rooms/:roomId", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { roomId } = req.params;
-    db_default.prepare("DELETE FROM chat_rooms WHERE id = ?").run(roomId);
+    try {
+      db_default.prepare("DELETE FROM chat_rooms WHERE id = ?").run(roomId);
+    } catch (e) {
+    }
+    if (isSupabaseConfigured()) {
+      try {
+        await deleteSupabaseRoom(roomId);
+      } catch (e) {
+      }
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -150,8 +150,35 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 
+-- 10. TABEL CHAT_ROOMS & CHAT_MESSAGES (Live Chat & AI Chatbot Real-Time)
+CREATE TABLE IF NOT EXISTS chat_rooms (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  user_name TEXT,
+  last_message TEXT,
+  last_message_at TIMESTAMPTZ DEFAULT NOW(),
+  unread_admin INTEGER DEFAULT 0,
+  unread_user INTEGER DEFAULT 0,
+  bot_enabled INTEGER DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL,
+  sender_type TEXT NOT NULL,
+  sender_name TEXT NOT NULL,
+  message TEXT NOT NULL,
+  product_payload JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_room_id ON chat_messages(room_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_rooms_last_message_at ON chat_rooms(last_message_at DESC);
+
 -- =====================================================================
--- 10. STORED PROCEDURE: CHECKOUT ATOMIK DENGAN ROW-LOCK (Zero Stock Discrepancy)
+-- 11. STORED PROCEDURE: CHECKOUT ATOMIK DENGAN ROW-LOCK (Zero Stock Discrepancy)
 -- =====================================================================
 CREATE OR REPLACE FUNCTION process_checkout_atomic(
   p_order_id TEXT,

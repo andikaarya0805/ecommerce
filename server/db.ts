@@ -495,6 +495,9 @@ if (DatabaseSync) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     const nativeDb = new DatabaseSync(path.join(dataDir, 'ecommerce.db'));
+    try {
+      nativeDb.exec('PRAGMA foreign_keys = OFF;');
+    } catch (e) {}
     nativeDb.exec('CREATE TABLE IF NOT EXISTS _test_probe (id INT);');
     db = nativeDb;
     console.log('[DB] Native SQLite initialized at:', path.join(dataDir, 'ecommerce.db'));
@@ -648,6 +651,10 @@ export function initDb() {
   if (db.isInMemory) return;
 
   try {
+    try {
+      db.exec('PRAGMA foreign_keys = OFF;');
+    } catch (e) {}
+
     db.exec(`
       CREATE TABLE IF NOT EXISTS categories (
         id TEXT PRIMARY KEY,
@@ -698,7 +705,6 @@ export function initDb() {
       CREATE TABLE IF NOT EXISTS product_bike_compatibility (
         product_id TEXT NOT NULL,
         bike_type TEXT NOT NULL,
-        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
         PRIMARY KEY (product_id, bike_type)
       );
 
@@ -725,6 +731,7 @@ export function initDb() {
         customer_email TEXT,
         customer_phone TEXT NOT NULL,
         shipping_address TEXT NOT NULL,
+        customer_notes TEXT,
         shipping_province TEXT,
         shipping_city TEXT,
         shipping_district TEXT,
@@ -740,10 +747,14 @@ export function initDb() {
         status TEXT NOT NULL DEFAULT 'PENDING',
         payment_method TEXT NOT NULL DEFAULT 'qris',
         payment_url TEXT,
+        snap_token TEXT,
+        biteship_order_id TEXT,
+        biteship_tracking_id TEXT,
+        destination_area_id TEXT,
         expired_at TEXT NOT NULL,
         paid_at TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS order_items (
@@ -753,8 +764,7 @@ export function initDb() {
         product_name_snapshot TEXT NOT NULL,
         price_snapshot INTEGER NOT NULL,
         quantity INTEGER NOT NULL,
-        subtotal INTEGER NOT NULL,
-        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        subtotal INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS chat_rooms (
@@ -766,8 +776,7 @@ export function initDb() {
         unread_admin INTEGER NOT NULL DEFAULT 0,
         unread_user INTEGER NOT NULL DEFAULT 0,
         bot_enabled INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS chat_messages (
@@ -777,8 +786,7 @@ export function initDb() {
         sender_name TEXT NOT NULL,
         message TEXT NOT NULL,
         product_payload TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (room_id) REFERENCES chat_rooms(id) ON DELETE CASCADE
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
 
@@ -805,6 +813,7 @@ export function initDb() {
     ensureColumn('orders', 'biteship_tracking_id', 'TEXT');
     ensureColumn('orders', 'destination_area_id', 'TEXT');
     ensureColumn('orders', 'customer_notes', 'TEXT');
+    ensureColumn('orders', 'updated_at', "TEXT DEFAULT (datetime('now'))");
     ensureColumn('products', 'variation_groups', 'TEXT');
     ensureColumn('products', 'bike_variants', 'TEXT');
 

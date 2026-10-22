@@ -258,8 +258,17 @@ export const AdminPanel: React.FC = () => {
       const res = await safeFetchJson<{ rooms: ChatRoom[] }>('/api/admin/chat/rooms', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res && res.rooms) {
-        setChatRooms(res.rooms);
+      if (res && Array.isArray(res.rooms)) {
+        setChatRooms((prev) => {
+          if (res.rooms.length === 0 && prev.length > 0) return prev;
+          if (
+            prev.length === res.rooms.length &&
+            prev.every((r, i) => r.id === res.rooms[i].id && r.last_message === res.rooms[i].last_message && r.unread_admin === res.rooms[i].unread_admin)
+          ) {
+            return prev;
+          }
+          return res.rooms;
+        });
       }
     } catch (e) {
       // quiet
@@ -276,8 +285,21 @@ export const AdminPanel: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      if (res && res.messages) {
-        setChatMessages(res.messages);
+      if (res && Array.isArray(res.messages)) {
+        setChatMessages((prev) => {
+          if (res.messages.length === 0 && prev.length > 0) return prev;
+          const temp = prev.filter((m) => m.id.startsWith('admin_temp_'));
+          const existingIds = new Set(res.messages.map((m) => m.id));
+          const filteredTemp = temp.filter((t) => !existingIds.has(t.id));
+          const next = [...res.messages, ...filteredTemp];
+          if (
+            prev.length === next.length &&
+            prev.every((m, i) => m.id === next[i].id && m.message === next[i].message)
+          ) {
+            return prev;
+          }
+          return next;
+        });
       }
       // mark as read by admin
       safeFetchJson(`/api/chat/rooms/${roomId}/read`, {

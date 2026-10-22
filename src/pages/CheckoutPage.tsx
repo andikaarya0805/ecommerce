@@ -366,24 +366,32 @@ export const CheckoutPage: React.FC = () => {
       // MIDTRANS DIRECT REDIRECT / SNAP POPUP HANDLING (KECUALI COD)
       // =================================================================
       if (!isCod && snapToken && (window as any).snap) {
-        // Direct Snap popup pre-locked to the chosen payment method!
-        (window as any).snap.pay(snapToken, {
-          onSuccess: (result: any) => {
-            console.log('[Snap Success]', result);
+        try {
+          (window as any).snap.pay(snapToken, {
+            onSuccess: (result: any) => {
+              console.log('[Snap Success]', result);
+              navigate(`/orders/${invoiceNumber}`);
+            },
+            onPending: (result: any) => {
+              console.log('[Snap Pending]', result);
+              navigate(`/orders/${invoiceNumber}`);
+            },
+            onError: (err: any) => {
+              console.error('[Snap Error]', err);
+              navigate(`/orders/${invoiceNumber}`);
+            },
+            onClose: () => {
+              navigate(`/orders/${invoiceNumber}`);
+            },
+          });
+        } catch (snapErr) {
+          console.warn('[Snap Pop-up Failed, redirecting to payment URL or invoice page]', snapErr);
+          if (paymentUrl) {
+            window.location.href = paymentUrl;
+          } else {
             navigate(`/orders/${invoiceNumber}`);
-          },
-          onPending: (result: any) => {
-            console.log('[Snap Pending]', result);
-            navigate(`/orders/${invoiceNumber}`);
-          },
-          onError: (err: any) => {
-            console.error('[Snap Error]', err);
-            navigate(`/orders/${invoiceNumber}`);
-          },
-          onClose: () => {
-            navigate(`/orders/${invoiceNumber}`);
-          },
-        });
+          }
+        }
       } else if (!isCod && paymentUrl) {
         // Fallback: direct redirect to Midtrans hosted payment page
         window.location.href = paymentUrl;
