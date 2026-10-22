@@ -205,17 +205,19 @@ export const ProductDetailPage: React.FC = () => {
     return getProductPriceRange(product);
   }, [product]);
 
-  // Gallery images list (Generate 4 mock variant shots if only 1 image provided)
+  // Gallery images list: strictly use the product's actual image and any additional photos provided
   const galleryImages = useMemo(() => {
     if (!product) return [];
-    const base = product.image;
-    // Provide a list of angles/thumbnails
-    return [
-      base,
-      'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=600&q=80',
-      'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&w=600&q=80',
-      'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=600&q=80',
-    ];
+    const imgs: string[] = [];
+    if (product.image) imgs.push(product.image);
+    if (Array.isArray((product as any).images)) {
+      for (const img of (product as any).images) {
+        if (img && typeof img === 'string' && !imgs.includes(img)) {
+          imgs.push(img);
+        }
+      }
+    }
+    return imgs;
   }, [product]);
 
   // Preselect variation defaults matching user's bike or 1st option
@@ -447,28 +449,30 @@ export const ProductDetailPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Thumbnail Carousel (Shopee Style) */}
-            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-              {galleryImages.map((imgUrl, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onMouseEnter={() => setSelectedImageIndex(idx)}
-                  onClick={() => setSelectedImageIndex(idx)}
-                  className={`aspect-square rounded-md overflow-hidden border-2 transition-all cursor-pointer bg-neutral-900 ${
-                    selectedImageIndex === idx
-                      ? 'border-[#D0011B] shadow-md shadow-red-950/40 ring-1 ring-[#D0011B]'
-                      : 'border-neutral-800 hover:border-neutral-600 opacity-70 hover:opacity-100'
-                  }`}
-                >
-                  <img
-                    src={imgUrl}
-                    alt={`${product.name} thumbnail ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                </button>
-              ))}
-            </div>
+            {/* Thumbnail Carousel (Shopee Style) - only displayed when product has multiple photos */}
+            {galleryImages.length > 1 && (
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                {galleryImages.map((imgUrl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onMouseEnter={() => setSelectedImageIndex(idx)}
+                    onClick={() => setSelectedImageIndex(idx)}
+                    className={`aspect-square rounded-md overflow-hidden border-2 transition-all cursor-pointer bg-neutral-900 ${
+                      selectedImageIndex === idx
+                        ? 'border-[#D0011B] shadow-md shadow-red-950/40 ring-1 ring-[#D0011B]'
+                        : 'border-neutral-800 hover:border-neutral-600 opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    <img
+                      src={imgUrl}
+                      alt={`${product.name} thumbnail ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Share, Favorite, and Protection Badges */}
             <div className="pt-3 border-t border-neutral-800/80 flex items-center justify-between text-xs text-neutral-400">
