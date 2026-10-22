@@ -3172,22 +3172,30 @@ export const AdminPanel: React.FC = () => {
                     <label className="block text-neutral-300 font-bold mb-1">URL Foto Produk</label>
                     <div className="flex gap-3 items-center">
                       <img
-                        src={editingProduct.image || '/images/default.jpg'}
+                        src={editingProduct.image || '/images/racing_scooter_hero_1789096506709.jpg'}
                         alt="Preview"
                         referrerPolicy="no-referrer"
-                        className="w-14 h-14 rounded-lg object-cover bg-black border border-neutral-700 flex-shrink-0"
+                        className="w-14 h-14 rounded-lg object-contain bg-black border border-neutral-700 flex-shrink-0"
                         onError={(e: any) => {
-                          e.target.src = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60';
+                          e.target.src = '/images/racing_scooter_hero_1789096506709.jpg';
                         }}
                       />
                       <input
                         type="text"
-                        placeholder="https://images.unsplash.com/..."
+                        placeholder="https://... (URL Foto Produk)"
                         value={editingProduct.image || ''}
                         onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
                         className="flex-1 px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
                       />
                     </div>
+                    {editingProduct.image && (editingProduct.image.includes(':250:250') || editingProduct.image.includes(':100:100') || editingProduct.image.includes(':150:150') || editingProduct.image.includes('_tn') || editingProduct.image.includes('thumb')) && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs mt-1">
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                        <span>
+                          <strong>Resolusi Rendah Terdeteksi:</strong> URL yang Anda masukkan adalah thumbnail kecil ({editingProduct.image.includes(':250:250') ? '250x250 px' : 'thumbnail'}), sehingga gambar akan terlihat buram/blur saat ditampilkan penuh. Disarankan gunakan tombol <strong>&quot;Upload File (JPG / PNG)&quot;</strong> atau salin URL gambar ukuran asli agar tampilan jernih (HD).
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 

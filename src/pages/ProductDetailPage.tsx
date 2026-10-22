@@ -426,7 +426,7 @@ export const ProductDetailPage: React.FC = () => {
                 src={galleryImages[selectedImageIndex] || product.image}
                 alt={product.name}
                 referrerPolicy="no-referrer"
-                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-300"
               />
 
               {/* Shopee Mall Tag */}
