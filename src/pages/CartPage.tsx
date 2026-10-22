@@ -18,6 +18,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
+import { toast } from '../context/ToastContext';
 
 export const CartPage: React.FC = () => {
   const navigate = useNavigate();
@@ -79,7 +80,7 @@ export const CartPage: React.FC = () => {
 
   const handleProceedCheckout = () => {
     if (selectedItems.length === 0) {
-      alert('Pilih minimal 1 produk untuk di-checkout.');
+      toast.warning('Pilih Produk', 'Centang minimal 1 produk di keranjang untuk di-checkout.');
       return;
     }
     if (!user) {

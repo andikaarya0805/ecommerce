@@ -27,6 +27,7 @@ import {
 
 import { INDONESIA_DESTINATIONS } from '../data/destinations';
 import { getApiUrl, safeFetchJson } from '../config/api';
+import { toast } from '../context/ToastContext';
 
 interface CourierOption {
   courierName: string;
@@ -304,7 +305,7 @@ export const CheckoutPage: React.FC = () => {
   const handlePlaceOrder = async () => {
     if (isSubmitting) return;
     if (items.length === 0) {
-      alert('Keranjang belanja kosong');
+      toast.warning('Keranjang Belanja Kosong', 'Pilih produk yang ingin dibeli terlebih dahulu.');
       navigate('/');
       return;
     }

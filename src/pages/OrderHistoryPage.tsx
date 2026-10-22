@@ -24,6 +24,7 @@ import {
   Coins
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
+import { toast } from '../context/ToastContext';
 
 type TabStatus = 'ALL' | 'PENDING' | 'PAID' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
 
@@ -122,7 +123,7 @@ export const OrderHistoryPage: React.FC = () => {
         },
         onError: (err: any) => {
           console.error('[Snap Error]', err);
-          alert('Pembayaran gagal atau dibatalkan.');
+          toast.warning('Pembayaran Dibatalkan', 'Transaksi pembayaran belum berhasil diselesaikan.');
         },
         onClose: () => {
           fetchUserOrders();

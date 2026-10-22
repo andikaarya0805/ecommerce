@@ -45,6 +45,7 @@ import {
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
 import { getProductPriceRange } from '../data/productVariations';
+import { toast, confirmModal } from '../context/ToastContext';
 
 export interface AdminVarOption {
   name: string;
@@ -399,7 +400,7 @@ export const AdminPanel: React.FC = () => {
       fetchRoomMessages(selectedChatRoomId);
       fetchChatRooms();
     } catch (err: any) {
-      alert('Gagal mengirim pesan: ' + err.message);
+      toast.error('Gagal Mengirim Pesan', err.message);
     } finally {
       setAdminSending(false);
     }
@@ -418,14 +419,22 @@ export const AdminPanel: React.FC = () => {
         setChatRooms((prev) =>
           prev.map((r) => (r.id === roomId ? { ...r, bot_enabled: res.bot_enabled } : r))
         );
+        toast.info('Mode Bot Diperbarui', res.bot_enabled === 1 ? 'Jawir Bot telah diaktifkan' : 'Jawir Bot dinonaktifkan (Manual)');
       }
     } catch (e: any) {
-      alert('Gagal mengubah mode bot: ' + e.message);
+      toast.error('Gagal Mengubah Mode Bot', e.message);
     }
   };
 
   const handleDeleteChatRoom = async (roomId: string) => {
-    if (!window.confirm('Hapus percakapan pelanggan ini dari riwayat?')) return;
+    const confirmed = await confirmModal({
+      title: 'Hapus Riwayat Chat',
+      message: 'Hapus percakapan pelanggan ini dari riwayat chat secara permanen?',
+      confirmText: 'Ya, Hapus Chat',
+      cancelText: 'Batal',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await safeFetchJson(`/api/admin/chat/rooms/${roomId}`, {
         method: 'DELETE',
@@ -436,15 +445,16 @@ export const AdminPanel: React.FC = () => {
         setChatMessages([]);
       }
       fetchChatRooms();
+      toast.success('Chat Dihapus', 'Riwayat percakapan berhasil dihapus.');
     } catch (e: any) {
-      alert('Gagal menghapus percakapan: ' + e.message);
+      toast.error('Gagal Menghapus Percakapan', e.message);
     }
   };
 
   // OMS Status Handlers
   const handleUpdateOrderStatus = async (orderId: string, status: string, trackingNum?: string) => {
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+      const data = await safeFetchJson(`/api/admin/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -456,9 +466,6 @@ export const AdminPanel: React.FC = () => {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal mengubah status pesanan');
-
       fetchAllAdminData();
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder((prev) =>
@@ -466,14 +473,21 @@ export const AdminPanel: React.FC = () => {
         );
       }
       setTrackingNumberInput('');
-      alert(data.message || 'Status berhasil diperbarui!');
+      toast.success('Status Pesanan Diperbarui', data?.message || `Status pesanan berhasil diubah menjadi ${status}`);
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Gagal Memperbarui Status', err.message);
     }
   };
 
   const handleRequestBiteshipPickup = async (orderId: string) => {
-    if (!confirm('Request pickup kurir ke Biteship Sandbox sekarang? Nomor resi akan otomatis terbit.')) return;
+    const confirmed = await confirmModal({
+      title: 'Request Pickup Biteship',
+      message: 'Request penjemputan paket kurir ke Biteship sekarang? Nomor resi pengiriman akan langsung terbit.',
+      confirmText: 'Ya, Request Pickup',
+      cancelText: 'Batal',
+      variant: 'primary',
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/admin/orders/${orderId}/biteship-ship`, {
         method: 'POST',
@@ -483,7 +497,7 @@ export const AdminPanel: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal request pickup Biteship');
-      alert(`Berhasil! Nomor Resi Biteship: ${data.trackingNumber}`);
+      toast.success('Pickup Berhasil Diajukan!', `Nomor Resi Biteship: ${data.trackingNumber}`);
       fetchAllAdminData();
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder((prev) =>
@@ -491,7 +505,7 @@ export const AdminPanel: React.FC = () => {
         );
       }
     } catch (err: any) {
-      alert('Error Biteship: ' + err.message);
+      toast.error('Gagal Request Biteship', err.message);
     }
   };
 
@@ -566,12 +580,12 @@ export const AdminPanel: React.FC = () => {
 
   const processImageFile = (file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp', 'image/jpg'].includes(file.type)) {
-      alert('Format file tidak didukung. Mohon gunakan foto dengan format JPG, JPEG, atau PNG.');
+      toast.warning('Format Tidak Didukung', 'Mohon gunakan foto format JPG, JPEG, PNG, atau WEBP.');
       return;
     }
 
     if (file.size > 12 * 1024 * 1024) {
-      alert('Ukuran file terlalu besar. Maksimal 12MB.');
+      toast.warning('Ukuran File Terlalu Besar', 'Maksimal ukuran foto adalah 12MB.');
       return;
     }
 
@@ -607,17 +621,18 @@ export const AdminPanel: React.FC = () => {
             ...prev,
             image: compressedDataUrl,
           }));
+          toast.success('Foto Berhasil Diproses', 'Gambar produk siap disimpan.');
         }
         setIsUploadingImage(false);
       };
       img.onerror = () => {
-        alert('Gagal memproses gambar. File gambar mungkin rusak.');
+        toast.error('Gagal Memproses Gambar', 'File gambar mungkin rusak atau tidak terbaca.');
         setIsUploadingImage(false);
       };
       img.src = event.target?.result as string;
     };
     reader.onerror = () => {
-      alert('Gagal membaca file dari komputer.');
+      toast.error('Gagal Membaca File', 'Tidak dapat membaca file dari komputer.');
       setIsUploadingImage(false);
     };
     reader.readAsDataURL(file);
@@ -749,13 +764,21 @@ export const AdminPanel: React.FC = () => {
       setEditingProduct(null);
       await fetchProductsList();
       fetchAllAdminData();
+      toast.success('Katalog Berhasil Diperbarui', isEdit ? 'Perubahan produk berhasil disimpan.' : 'Produk baru berhasil ditambahkan ke katalog.');
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Gagal Menyimpan Produk', err.message);
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Yakin ingin menghapus produk ini secara permanen?')) return;
+    const confirmed = await confirmModal({
+      title: 'Hapus Produk Permanen',
+      message: 'Yakin ingin menghapus produk ini secara permanen dari katalog toko? Tindakan ini tidak dapat dibatalkan.',
+      confirmText: 'Ya, Hapus Produk',
+      cancelText: 'Batal',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       setProducts((prev) => prev.filter((p) => p.id !== id));
       await safeFetchJson(`/api/admin/products/${id}`, {
@@ -763,8 +786,9 @@ export const AdminPanel: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       await fetchProductsList();
+      toast.success('Produk Dihapus', 'Produk berhasil dihapus dari katalog toko.');
     } catch (err: any) {
-      alert('Gagal menghapus produk: ' + err.message);
+      toast.error('Gagal Menghapus Produk', err.message);
       fetchProductsList();
     }
   };
@@ -779,6 +803,7 @@ export const AdminPanel: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       await fetchProductsList();
+      toast.info('Status Produk Diubah', 'Visibilitas produk di katalog berhasil diperbarui.');
     } catch (err) {
       console.error(err);
       fetchProductsList();
@@ -817,21 +842,30 @@ export const AdminPanel: React.FC = () => {
         badge: 'Spesial D2C',
       });
       fetchAllAdminData();
+      toast.success('Voucer Berhasil Dibuat', 'Kode promo voucer baru sudah aktif dan siap digunakan pelanggan.');
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Gagal Membuat Voucer', err.message);
     }
   };
 
   const handleDeleteVoucher = async (id: string) => {
-    if (!confirm('Hapus kode voucer ini?')) return;
+    const confirmed = await confirmModal({
+      title: 'Hapus Kode Voucer',
+      message: 'Hapus kode promo voucer ini dari toko? Pengguna tidak akan bisa menggunakannya lagi.',
+      confirmText: 'Ya, Hapus Voucer',
+      cancelText: 'Batal',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await fetch(`/api/admin/vouchers/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchAllAdminData();
-    } catch (err) {
-      console.error(err);
+      toast.success('Voucer Dihapus', 'Kode promo voucer berhasil dihapus.');
+    } catch (err: any) {
+      toast.error('Gagal Menghapus Voucer', err.message);
     }
   };
 

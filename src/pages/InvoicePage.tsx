@@ -28,6 +28,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
+import { toast, confirmModal } from '../context/ToastContext';
 
 export const InvoicePage: React.FC = () => {
   const { invoiceNumber } = useParams<{ invoiceNumber: string }>();
@@ -88,7 +89,7 @@ export const InvoicePage: React.FC = () => {
         },
         onError: (err: any) => {
           console.error('[Snap Error]', err);
-          alert('Pembayaran gagal atau dibatalkan.');
+          toast.warning('Pembayaran Dibatalkan', 'Transaksi pembayaran belum berhasil diselesaikan.');
         },
         onClose: () => {
           fetchOrder();
@@ -97,7 +98,7 @@ export const InvoicePage: React.FC = () => {
     } else if (order.payment_url) {
       window.open(order.payment_url, '_blank');
     } else {
-      alert('Snap token sedang disiapkan atau kredensial Midtrans di .env belum diatur.');
+      toast.info('Menyiapkan Pembayaran', 'Snap token sedang diproses oleh payment gateway.');
     }
   };
 
@@ -140,12 +141,15 @@ export const InvoicePage: React.FC = () => {
     if (type === 'invoice') {
       setCopiedInvoice(true);
       setTimeout(() => setCopiedInvoice(false), 2000);
+      toast.success('Disalin ke Clipboard', `Nomor Invoice ${text} berhasil disalin.`);
     } else if (type === 'resi') {
       setCopiedResi(true);
       setTimeout(() => setCopiedResi(false), 2000);
+      toast.success('Disalin ke Clipboard', `Nomor Resi ${text} berhasil disalin.`);
     } else {
       setCopiedVA(true);
       setTimeout(() => setCopiedVA(false), 2000);
+      toast.success('Disalin ke Clipboard', `Nomor Pembayaran ${text} berhasil disalin.`);
     }
   };
 
@@ -158,8 +162,9 @@ export const InvoicePage: React.FC = () => {
         method: 'POST',
       });
       fetchOrder();
+      toast.success('Simulasi Pembayaran Berhasil', 'Status pesanan berhasil diubah menjadi PAID.');
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Gagal Memproses Pembayaran', err.message);
     } finally {
       setIsProcessingPay(false);
     }
@@ -167,15 +172,24 @@ export const InvoicePage: React.FC = () => {
 
   // Cancel order
   const handleCancelOrder = async () => {
-    if (!order || !confirm('Yakin ingin membatalkan pesanan ini? Stok akan dikembalikan.')) return;
+    if (!order) return;
+    const confirmed = await confirmModal({
+      title: 'Batalkan Pesanan',
+      message: 'Yakin ingin membatalkan pesanan ini? Stok produk yang dipesan akan otomatis dikembalikan ke katalog.',
+      confirmText: 'Ya, Batalkan Pesanan',
+      cancelText: 'Kembali',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     setIsProcessingCancel(true);
     try {
       await safeFetchJson(`/api/orders/${order.invoice_number}/cancel`, {
         method: 'POST',
       });
       fetchOrder();
+      toast.success('Pesanan Dibatalkan', 'Pesanan Anda telah dibatalkan.');
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Gagal Membatalkan Pesanan', err.message);
     } finally {
       setIsProcessingCancel(false);
     }
