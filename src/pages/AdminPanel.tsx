@@ -40,7 +40,9 @@ import {
   ToggleLeft,
   ToggleRight,
   UploadCloud,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Link2,
+  ArrowDownToLine
 } from 'lucide-react';
 import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
@@ -138,6 +140,13 @@ export const AdminPanel: React.FC = () => {
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const [isDragOverImage, setIsDragOverImage] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Shopee Scraper CMS State
+  const [isShopeeModalOpen, setIsShopeeModalOpen] = useState(false);
+  const [shopeeUrlInput, setShopeeUrlInput] = useState('');
+  const [shopeeLoading, setShopeeLoading] = useState(false);
+  const [scrapedShopeeData, setScrapedShopeeData] = useState<any | null>(null);
+  const [isDirectSavingShopee, setIsDirectSavingShopee] = useState(false);
 
   // Vouchers CMS State
   const [vouchers, setVouchers] = useState<any[]>([]);
@@ -647,6 +656,144 @@ export const AdminPanel: React.FC = () => {
     }
     if (e.target) {
       e.target.value = '';
+    }
+  };
+
+  // Shopee Scraper Handlers
+  const handleScrapeShopee = async () => {
+    if (!shopeeUrlInput.trim()) {
+      toast.error('URL Kosong', 'Silakan tempelkan link produk Shopee.');
+      return;
+    }
+
+    setShopeeLoading(true);
+    setScrapedShopeeData(null);
+
+    try {
+      const res = await safeFetchJson<any>('/api/admin/scrape-shopee', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ url: shopeeUrlInput.trim() }),
+      });
+
+      if (res?.success && res.product) {
+        setScrapedShopeeData(res.product);
+        toast.success('Produk Berhasil Ditarik!', `Ditemukan: ${res.product.name.slice(0, 35)}...`);
+      } else {
+        throw new Error(res?.error || 'Gagal mengekstrak data dari Shopee');
+      }
+    } catch (err: any) {
+      toast.error('Gagal Tarik Produk Shopee', err.message || 'Periksa kembali URL Shopee.');
+    } finally {
+      setShopeeLoading(false);
+    }
+  };
+
+  const handleApplyShopeeToForm = () => {
+    if (!scrapedShopeeData) return;
+    const p = scrapedShopeeData;
+
+    setEditingProduct({
+      name: p.name,
+      category: p.category || 'part-cvt',
+      bikeCompatibility: p.bikeCompatibility || ['vario-pcx'],
+      compatibilityText: p.compatibilityText || 'Universal',
+      fitmentTag: p.fitmentTag || '100% PnP Presisi',
+      price: p.price,
+      originalPrice: p.originalPrice || Math.round(p.price * 1.25),
+      discountPercent: Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100) || 15,
+      promoTag: p.promoTag || 'MALL',
+      rating: p.rating || 4.9,
+      soldCount: p.soldCount || 85,
+      stock: p.stock || 50,
+      weight_grams: p.weight || 500,
+      originCity: 'Jakarta Timur',
+      image: p.image,
+      description: p.description,
+      isPromo: true,
+      isPaketUpgrade: p.category === 'part-cvt',
+      isActive: true,
+    });
+
+    if (p.variationGroups && Array.isArray(p.variationGroups)) {
+      setVarGroups(p.variationGroups);
+    } else {
+      setVarGroups([]);
+    }
+
+    if (p.bikeVariants && Array.isArray(p.bikeVariants)) {
+      setBikeVariantsList(p.bikeVariants);
+    } else {
+      setBikeVariantsList(['Universal Semua Motor']);
+    }
+
+    setSpecRows([
+      { key: 'Garansi', value: '1 Bulan Garansi Toko' },
+      { key: 'Asal Produk', value: 'Import / Pabrikan Resmi' },
+    ]);
+
+    setImageUploadMode('url');
+    setIsShopeeModalOpen(false);
+    setIsProductModalOpen(true);
+    toast.success('Form Produk Terisi', 'Silakan tinjau dan sesuaikan detail sebelum menyimpan.');
+  };
+
+  const handleDirectSaveShopee = async () => {
+    if (!scrapedShopeeData) return;
+    setIsDirectSavingShopee(true);
+    try {
+      const p = scrapedShopeeData;
+      const cleanVariationGroups = p.variationGroups || [];
+      const specsObj: Record<string, string> = {
+        'Garansi': '1 Bulan Garansi Pasang',
+        'Asal Produk': 'Original Pabrikan',
+      };
+
+      const payload = {
+        name: p.name,
+        category: p.category || 'part-cvt',
+        bikeCompatibility: p.bikeCompatibility || ['vario-pcx'],
+        compatibilityText: p.compatibilityText || 'Universal',
+        fitmentTag: p.fitmentTag || '100% PnP Presisi',
+        price: p.price,
+        originalPrice: p.originalPrice || Math.round(p.price * 1.25),
+        discountPercent: Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100) || 15,
+        promoTag: p.promoTag || 'MALL',
+        rating: p.rating || 4.9,
+        soldCount: p.soldCount || 90,
+        stock: p.stock || 50,
+        weight_grams: p.weight || 500,
+        originCity: 'Jakarta Timur',
+        image: p.image,
+        description: p.description,
+        specs: specsObj,
+        variationGroups: cleanVariationGroups,
+        bikeVariants: p.bikeVariants || ['Universal Semua Motor'],
+        isPromo: true,
+        isPaketUpgrade: p.category === 'part-cvt',
+        isActive: true,
+      };
+
+      await safeFetchJson('/api/admin/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      toast.success('Produk Shopee Tersimpan!', `"${p.name.slice(0, 30)}..." telah ditambahkan ke katalog.`);
+      setIsShopeeModalOpen(false);
+      setScrapedShopeeData(null);
+      fetchProductsList();
+    } catch (err: any) {
+      toast.error('Gagal Menyimpan Produk', err.message || 'Terjadi kesalahan sistem.');
+    } finally {
+      setIsDirectSavingShopee(false);
     }
   };
 
@@ -1345,13 +1492,29 @@ export const AdminPanel: React.FC = () => {
                 </select>
               </div>
 
-              <button
-                onClick={openCreateProduct}
-                className="px-4 py-2 bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-md shadow-red-950/40 cursor-pointer transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Produk Baru</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsShopeeModalOpen(true);
+                    setShopeeUrlInput('');
+                    setScrapedShopeeData(null);
+                  }}
+                  className="px-3.5 py-2 bg-gradient-to-r from-[#EE4D2D] to-[#FF6B35] hover:from-[#d73f1f] hover:to-[#e5531d] text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-md shadow-orange-950/40 cursor-pointer transition-all active:scale-95"
+                  title="Ekstrak data produk langsung dari link Shopee"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>Import dari Shopee</span>
+                </button>
+
+                <button
+                  onClick={openCreateProduct}
+                  className="px-4 py-2 bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 shadow-md shadow-red-950/40 cursor-pointer transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Produk Baru</span>
+                </button>
+              </div>
             </div>
 
             {/* Products Table */}
@@ -3434,6 +3597,263 @@ export const AdminPanel: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      {/* ============================================================== */}
+      {/* MODAL: IMPORT PRODUK DARI SHOPEE (SCRAPER)                     */}
+      {/* ============================================================== */}
+      {isShopeeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-[#141414] border border-neutral-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative text-left my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-800 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EE4D2D] to-[#FF6B35] flex items-center justify-center text-white shadow-md shadow-orange-950/50">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-racing font-bold text-white text-base tracking-wide uppercase">
+                    Import Produk dari Shopee
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Ekstrak otomatis judul, foto HD, harga, varian motor, dan deskripsi produk.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!shopeeLoading) {
+                    setIsShopeeModalOpen(false);
+                    setScrapedShopeeData(null);
+                  }
+                }}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Input URL Section */}
+            <div className="space-y-3 mb-5">
+              <label className="block text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                Link / URL Produk Shopee:
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Link2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                  <input
+                    type="url"
+                    value={shopeeUrlInput}
+                    onChange={(e) => setShopeeUrlInput(e.target.value)}
+                    placeholder="https://shopee.co.id/Nama-Produk-i.12345.67890..."
+                    disabled={shopeeLoading}
+                    className="w-full pl-10 pr-3 py-2.5 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-[#EE4D2D] disabled:opacity-60"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text) setShopeeUrlInput(text.trim());
+                    } catch (e) {}
+                  }}
+                  disabled={shopeeLoading}
+                  className="px-3 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold rounded-xl transition-all border border-neutral-700 cursor-pointer disabled:opacity-50"
+                  title="Tempel dari Clipboard"
+                >
+                  Paste
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleScrapeShopee}
+                  disabled={shopeeLoading || !shopeeUrlInput.trim()}
+                  className="px-5 py-2.5 bg-gradient-to-r from-[#EE4D2D] to-[#FF6B35] hover:from-[#d73f1f] hover:to-[#e5531d] text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-orange-950/40 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {shopeeLoading ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Menarik Data...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownToLine className="w-3.5 h-3.5" />
+                      <span>Tarik Produk</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Preset Samples for Testing */}
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                <span className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider">Contoh Cepat:</span>
+                <button
+                  type="button"
+                  onClick={() => setShopeeUrlInput('https://shopee.co.id/Paket-Kirian-BRT-Super-Roller-Vario-150-125-i.38927182.1287391823')}
+                  className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 cursor-pointer transition-colors"
+                >
+                  Paket Kirian BRT
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShopeeUrlInput('https://shopee.co.id/Shockbreaker-RCB-Racing-Boy-VS-Series-NMAX-Aerox-i.29182736.9182736451')}
+                  className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 cursor-pointer transition-colors"
+                >
+                  Shockbreaker RCB
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShopeeUrlInput('https://shopee.co.id/Kaliper-Nissin-Samurai-Radial-4-Piston-i.51928374.8291029384')}
+                  className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 cursor-pointer transition-colors"
+                >
+                  Kaliper Nissin Samurai
+                </button>
+              </div>
+            </div>
+
+            {/* Loading Indicator with Animated Status */}
+            {shopeeLoading && (
+              <div className="p-6 bg-neutral-900/60 border border-neutral-800 rounded-xl text-center space-y-3 mb-4 animate-pulse">
+                <div className="w-10 h-10 border-2 border-orange-500/20 border-t-[#EE4D2D] rounded-full animate-spin mx-auto" />
+                <div>
+                  <p className="text-xs font-bold text-white">Sedang Menghubungi Shopee via Headless Browser...</p>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Melewati proteksi bot, mengambil foto resolusi tinggi, variasi motor, dan harga.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Scraped Product Result Preview */}
+            {scrapedShopeeData && !shopeeLoading && (
+              <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl space-y-4 mb-4">
+                <div className="flex items-start gap-4">
+                  <img
+                    src={scrapedShopeeData.image}
+                    alt={scrapedShopeeData.name}
+                    referrerPolicy="no-referrer"
+                    className="w-24 h-24 rounded-xl object-cover bg-black border border-neutral-700 flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-950/80 border border-orange-600 text-orange-400 uppercase">
+                        {scrapedShopeeData.category}
+                      </span>
+                      <span className="text-[10px] font-medium text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">
+                        {scrapedShopeeData.fitmentTag || 'PnP Presisi'}
+                      </span>
+                    </div>
+
+                    <h4 className="text-sm font-bold text-white leading-tight line-clamp-2">
+                      {scrapedShopeeData.name}
+                    </h4>
+
+                    <div className="flex items-baseline gap-2 pt-0.5">
+                      <span className="font-racing text-lg font-bold text-[#E50914]">
+                        {formatIDR(scrapedShopeeData.price)}
+                      </span>
+                      {scrapedShopeeData.originalPrice > scrapedShopeeData.price && (
+                        <span className="text-xs text-neutral-500 line-through">
+                          {formatIDR(scrapedShopeeData.originalPrice)}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-neutral-400">
+                      Stok: <strong className="text-white">{scrapedShopeeData.stock} pcs</strong> • Berat: <strong className="text-white">{scrapedShopeeData.weight} gram</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Gallery Images Strip */}
+                {scrapedShopeeData.images && scrapedShopeeData.images.length > 1 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5">
+                      Galeri Foto ({scrapedShopeeData.images.length} Gambar Ditemukan):
+                    </p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {scrapedShopeeData.images.map((imgUrl: string, idx: number) => (
+                        <img
+                          key={idx}
+                          src={imgUrl}
+                          alt={`thumb-${idx}`}
+                          referrerPolicy="no-referrer"
+                          onClick={() => setScrapedShopeeData({ ...scrapedShopeeData, image: imgUrl })}
+                          className={`w-14 h-14 rounded-lg object-cover bg-black flex-shrink-0 cursor-pointer border transition-all ${
+                            scrapedShopeeData.image === imgUrl
+                              ? 'border-[#EE4D2D] ring-2 ring-[#EE4D2D]/50 scale-105'
+                              : 'border-neutral-800 opacity-70 hover:opacity-100'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Variations Preview */}
+                {scrapedShopeeData.variationGroups && scrapedShopeeData.variationGroups.length > 0 && (
+                  <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-lg">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                      Variasi Produk ({scrapedShopeeData.variationGroups[0]?.name}):
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {scrapedShopeeData.variationGroups[0]?.options.map((opt: any, i: number) => (
+                        <span
+                          key={i}
+                          className="text-[10px] px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300"
+                        >
+                          {opt.name} {opt.price && opt.price !== scrapedShopeeData.price ? `(${formatIDR(opt.price)})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleDirectSaveShopee}
+                    disabled={isDirectSavingShopee}
+                    className="flex-1 py-2.5 bg-[#E50914] hover:bg-red-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-red-950/40 cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    {isDirectSavingShopee ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                    <span>Langsung Simpan ke Katalog Toko</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleApplyShopeeToForm}
+                    className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border border-neutral-700 cursor-pointer transition-colors"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>Buka & Edit di Form Produk</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex justify-end pt-2 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsShopeeModalOpen(false);
+                  setScrapedShopeeData(null);
+                }}
+                className="text-xs text-neutral-400 hover:text-white px-3 py-1.5 cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

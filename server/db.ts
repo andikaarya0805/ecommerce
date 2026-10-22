@@ -721,7 +721,10 @@ export function initDb() {
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user'
+        role TEXT NOT NULL DEFAULT 'user',
+        email TEXT,
+        avatar_url TEXT,
+        full_name TEXT
       );
 
       CREATE TABLE IF NOT EXISTS orders (
@@ -879,6 +882,11 @@ export function initDb() {
     } catch (err) {
       console.warn('[DB] Index creation warning:', err);
     }
+
+    // Ensure users table has modern OAuth columns
+    try { db.exec('ALTER TABLE users ADD COLUMN email TEXT;'); } catch (e) {}
+    try { db.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT;'); } catch (e) {}
+    try { db.exec('ALTER TABLE users ADD COLUMN full_name TEXT;'); } catch (e) {}
 
     // Default admin user
     const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');

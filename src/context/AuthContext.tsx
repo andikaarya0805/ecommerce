@@ -5,6 +5,9 @@ interface User {
   id: string;
   username: string;
   role: string;
+  email?: string;
+  avatar_url?: string;
+  full_name?: string;
 }
 
 interface AuthContextType {

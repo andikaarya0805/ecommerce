@@ -22,6 +22,7 @@ import { LiveChatWidget } from './components/LiveChatWidget';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { AdminPanel } from './pages/AdminPanel';
 import { InvoicePage } from './pages/InvoicePage';
 import { TrackOrderPage } from './pages/TrackOrderPage';
@@ -455,6 +456,7 @@ export default function App() {
         <Route path="/track-order" element={<TrackOrderPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
