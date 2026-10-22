@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { chromium } from '@playwright/test';
 
 export interface ScrapedShopeeProduct {
@@ -328,6 +330,20 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
 
   console.log('[Shopee Scraper] Starting scrape for:', targetUrl);
 
+  // Normalize cookie (support customCookie, .shopee_cookie.txt, or auto-wrap raw token)
+  let cleanCookie = (customCookie || '').replace(/^Cookie:\s*/i, '').trim();
+  if (!cleanCookie) {
+    const cookieFilePath = path.join(process.cwd(), '.shopee_cookie.txt');
+    if (fs.existsSync(cookieFilePath)) {
+      try {
+        cleanCookie = fs.readFileSync(cookieFilePath, 'utf-8').replace(/^Cookie:\s*/i, '').trim();
+      } catch (e) {}
+    }
+  }
+  if (cleanCookie && !cleanCookie.includes('=')) {
+    cleanCookie = `SPC_ST=${cleanCookie}; SPC_U=10670125;`;
+  }
+
   // Attempt direct Shopee Item API fetch if shopid & itemid exist in URL
   try {
     const match = targetUrl.match(/-i\.(\d+)\.(\d+)/) || targetUrl.match(/product\/(\d+)\/(\d+)/);
@@ -337,58 +353,121 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
       const headers: Record<string, string> = {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        Accept: 'application/json',
+        Accept: 'application/json, text/plain, */*',
         Referer: targetUrl,
         'X-Requested-With': 'XMLHttpRequest',
       };
-      if (customCookie) {
-        headers['Cookie'] = customCookie;
+      if (cleanCookie) {
+        headers['Cookie'] = cleanCookie;
       }
-      const apiRes = await fetch(`https://shopee.co.id/api/v4/item/get?shopid=${shopid}&itemid=${itemid}`, {
-        headers,
-      });
-      if (apiRes.ok) {
-        const json = await apiRes.json();
-        if (json?.data && json.data.name) {
-          console.log('[Shopee Scraper] Successfully fetched data via direct Shopee Item API!');
-          return formatShopeeItemData(json.data, targetUrl);
+
+      // 1. Try modern pdp/get_pc endpoint first (much faster and avoids browser overhead)
+      try {
+        const pdpRes = await fetch(`https://shopee.co.id/api/v4/pdp/get_pc?item_id=${itemid}&shop_id=${shopid}`, {
+          headers,
+        });
+        if (pdpRes.ok) {
+          const json = await pdpRes.json();
+          const itemObj = json?.data?.item || json?.data;
+          if (itemObj && (itemObj.name || itemObj.title)) {
+            console.log('[Shopee Scraper] Successfully fetched data via direct Shopee PDP API (pdp/get_pc)!');
+            return formatShopeeItemData(itemObj, targetUrl);
+          }
         }
-      }
+      } catch (e) {}
+
+      // 2. Try legacy item/get endpoint
+      try {
+        const apiRes = await fetch(`https://shopee.co.id/api/v4/item/get?shopid=${shopid}&itemid=${itemid}`, {
+          headers,
+        });
+        if (apiRes.ok) {
+          const json = await apiRes.json();
+          const itemObj = json?.data?.item || json?.data;
+          if (itemObj && (itemObj.name || itemObj.title)) {
+            console.log('[Shopee Scraper] Successfully fetched data via direct Shopee Item API!');
+            return formatShopeeItemData(itemObj, targetUrl);
+          }
+        }
+      } catch (e) {}
     }
   } catch (e) {}
 
-  // If running in Vercel Serverless or if Chromium is unavailable, run lightweight HTTP fallback
+  // Launch Playwright with persistent context to preserve session tokens and bypass CAPTCHA repeats
+  let context: any = null;
   let browser: any = null;
-  try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-      ],
-    });
-  } catch (launchErr: any) {
-    console.warn('[Shopee Scraper] Chromium unavailable (Vercel/serverless). Using resilient HTTP fallback:', launchErr.message);
-    return await scrapeShopeeViaHttpFallback(targetUrl);
-  }
+  let page: any = null;
+  const userDataDir = path.join(process.cwd(), '.shopee_server_profile');
 
   try {
-    const context = await browser.newContext({
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      viewport: { width: 1366, height: 768 },
-      locale: 'id-ID',
-      timezoneId: 'Asia/Jakarta',
-      extraHTTPHeaders: {
-        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-        ...(customCookie ? { Cookie: customCookie } : {}),
-      },
-    });
+    try {
+      context = await chromium.launchPersistentContext(userDataDir, {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
+        ],
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        viewport: { width: 1366, height: 768 },
+        locale: 'id-ID',
+        timezoneId: 'Asia/Jakarta',
+        extraHTTPHeaders: {
+          'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+          ...(cleanCookie ? { Cookie: cleanCookie } : {}),
+        },
+      });
+      page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
+    } catch (persistentErr: any) {
+      console.warn('[Shopee Scraper] Persistent context fallback:', persistentErr.message);
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
+        ],
+      });
+      context = await browser.newContext({
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        viewport: { width: 1366, height: 768 },
+        locale: 'id-ID',
+        timezoneId: 'Asia/Jakarta',
+        extraHTTPHeaders: {
+          'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+          ...(cleanCookie ? { Cookie: cleanCookie } : {}),
+        },
+      });
+      page = await context.newPage();
+    }
 
-    const page = await context.newPage();
+    // Inject cookies into context for client-side API requests
+    if (cleanCookie) {
+      try {
+        const cookiePairs = cleanCookie
+          .split(';')
+          .map((pair: string) => {
+            const idx = pair.indexOf('=');
+            if (idx === -1) return null;
+            return {
+              name: pair.slice(0, idx).trim(),
+              value: pair.slice(idx + 1).trim(),
+              domain: '.shopee.co.id',
+              path: '/',
+            };
+          })
+          .filter(Boolean);
+        if (cookiePairs.length > 0) {
+          await context.addCookies(cookiePairs);
+        }
+      } catch (e) {}
+    }
 
     // Prevent esbuild __name ReferenceError & hide webdriver
     await page.addInitScript(() => {
@@ -433,21 +512,56 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
     // 1. Process from intercepted Shopee API data if available
     if (capturedApiData) {
       const item = capturedApiData.item || capturedApiData;
-      const title = item.name || '';
+      const slugTitle = parseTitleFromUrl(targetUrl);
+      const title = item.name || item.title || item.item_name || slugTitle;
       const rawPrice = item.price_min || item.price || 0;
       const price = rawPrice > 1000000 ? Math.round(rawPrice / 100000) : rawPrice;
       const rawOrig = item.price_max_before_discount || item.price_before_discount || rawPrice;
       const originalPrice = rawOrig > 1000000 ? Math.round(rawOrig / 100000) : rawOrig;
 
-      const rawImages: string[] = Array.isArray(item.images) ? item.images : [];
+      const rawImages: string[] = Array.isArray(item.images)
+        ? item.images
+        : Array.isArray(item.image_list)
+        ? item.image_list
+        : item.image
+        ? [item.image]
+        : [];
       const images = rawImages.map((h: string) =>
         h.startsWith('http') ? h : `https://down-id.img.susercontent.com/file/${h}`
       );
-      if (item.image && !images.includes(item.image)) {
+      if (item.image) {
         const mainImg = item.image.startsWith('http')
           ? item.image
           : `https://down-id.img.susercontent.com/file/${item.image}`;
-        images.unshift(mainImg);
+        if (!images.includes(mainImg)) {
+          images.unshift(mainImg);
+        }
+      }
+
+      // If intercepted API only yielded 1 image, complement from DOM thumbnails
+      if (images.length < 2 && page) {
+        try {
+          const domImgs = await page.evaluate(() => {
+            const clean = (s: string) => s.trim().replace(/_(tn|m|s|b|xs|xxs)$/i, '').replace(/@.*$/, '');
+            const found: string[] = [];
+            const banned = ['alfamart', 'indomaret', 'spaylater', 'shopeepay', 'bca', 'mandiri', 'voucher', 'logo', 'avatar', 'badge'];
+            document.querySelectorAll('img, [style*="background"]').forEach((el: any) => {
+              let src = el.tagName === 'IMG' ? (el.currentSrc || el.src || '') : '';
+              if (!src) {
+                const m = (el.getAttribute('style') || '').match(/url\(["']?(https?:\/\/[^"')]+)["']?\)/);
+                if (m) src = m[1];
+              }
+              if (src && src.includes('susercontent.com/file/') && !banned.some((b) => src.toLowerCase().includes(b))) {
+                const c = clean(src);
+                if (!found.includes(c)) found.push(c);
+              }
+            });
+            return found;
+          });
+          for (const u of domImgs) {
+            if (!images.includes(u)) images.push(u);
+          }
+        } catch (e) {}
       }
 
       const description = item.description || '';
@@ -530,7 +644,9 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
           ? variationGroups
           : generateIntelligentVariations(title, description, price);
 
-      await browser.close();
+      if (page) await page.close().catch(() => {});
+      if (context) await context.close().catch(() => {});
+      if (browser) await browser.close().catch(() => {});
 
       return {
         name: title,
@@ -587,54 +703,59 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
       const productImages: string[] = [];
       const seen = new Set<string>();
 
-      // A. Priority: Images inside the Product Carousel / Main Gallery Container
-      const galleryNodes = Array.from(
+      // A. Schema.org Product (ld+json)
+      document.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
+        try {
+          const parsed = JSON.parse(s.textContent || '{}');
+          const imgField = parsed.image || (parsed['@graph'] && parsed['@graph'].find((g: any) => g.image)?.image);
+          if (Array.isArray(imgField)) {
+            imgField.forEach((u: any) => {
+              if (typeof u === 'string') {
+                const c = cleanUrl(u);
+                if (c && c.includes('susercontent.com/file/') && !isBlacklisted(c) && !seen.has(c)) {
+                  seen.add(c);
+                  productImages.push(c);
+                }
+              }
+            });
+          } else if (typeof imgField === 'string') {
+            const c = cleanUrl(imgField);
+            if (c && c.includes('susercontent.com/file/') && !isBlacklisted(c) && !seen.has(c)) {
+              seen.add(c);
+              productImages.push(c);
+            }
+          }
+        } catch (e) {}
+      });
+
+      // B. Gallery elements (carousel thumbnails, img, background-image)
+      const galleryEls = Array.from(
         document.querySelectorAll(
-          '[role="tablist"] img, .product-briefing img, div[tabindex] img, .pdp-image-slider img, .qaN3te img, ._2J7wAZ img, ._3y9y2w img'
+          '[role="tablist"] img, [role="tablist"] div, .product-briefing img, .product-briefing [style*="background"], div[tabindex] img, .pdp-image-slider img, img, [style*="background"]'
         )
-      ) as HTMLImageElement[];
+      );
 
-      for (const img of galleryNodes) {
-        const src = cleanUrl(img.currentSrc || img.src || img.getAttribute('data-src') || '');
-        if (!src || !src.includes('susercontent.com')) continue;
-        if (isBlacklisted(src, img.alt || '')) continue;
-
-        // Verify natural dimensions: product pictures are large square-ish photos
-        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-          if (img.naturalWidth < 160 || img.naturalHeight < 160) continue;
-          const ratio = img.naturalWidth / img.naturalHeight;
-          if (ratio > 1.5 || ratio < 0.65) continue;
+      for (const el of galleryEls) {
+        let rawSrc = '';
+        if (el.tagName === 'IMG') {
+          const img = el as HTMLImageElement;
+          rawSrc = cleanUrl(img.currentSrc || img.src || img.getAttribute('data-src') || '');
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            const ratio = img.naturalWidth / img.naturalHeight;
+            if (ratio > 1.6 || ratio < 0.6) continue; // Skip non-square banners
+          }
+        } else {
+          const style = el.getAttribute('style') || '';
+          const match = style.match(/url\(["']?(https?:\/\/[^"')]+)["']?\)/);
+          if (match) rawSrc = cleanUrl(match[1]);
         }
 
-        if (!seen.has(src)) {
-          seen.add(src);
-          productImages.push(src);
-        }
-      }
+        if (!rawSrc || !rawSrc.includes('susercontent.com/file/')) continue;
+        if (isBlacklisted(rawSrc)) continue;
 
-      // B. If gallery container yielded less than 2 images, inspect other images on page with strict dimensions
-      if (productImages.length < 2) {
-        const allImgs = Array.from(document.querySelectorAll('img')) as HTMLImageElement[];
-        for (const img of allImgs) {
-          const src = cleanUrl(img.currentSrc || img.src || img.getAttribute('data-src') || '');
-          if (!src || !src.includes('susercontent.com')) continue;
-          if (isBlacklisted(src, img.alt || '')) continue;
-
-          // Reject payment logos, payment icons, and small banners
-          const w = img.naturalWidth || img.width || 0;
-          const h = img.naturalHeight || img.height || 0;
-
-          // Product photos on Shopee must be at least 250px and roughly square (0.8 - 1.25)
-          if (w > 0 && h > 0) {
-            if (w < 250 || h < 250) continue;
-            const ratio = w / h;
-            if (ratio > 1.35 || ratio < 0.75) continue; // Skip wide banners or payment methods (e.g. Alfamart/BCA)
-          }
-
-          if (!seen.has(src)) {
-            seen.add(src);
-            productImages.push(src);
-          }
+        if (!seen.has(rawSrc)) {
+          seen.add(rawSrc);
+          productImages.push(rawSrc);
         }
       }
 
@@ -756,7 +877,9 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
       };
     });
 
-    await browser.close();
+    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
 
     const slugTitle = parseTitleFromUrl(targetUrl);
     let title = domData.name || '';
@@ -830,7 +953,9 @@ export async function scrapeShopeeProduct(rawUrl: string, customCookie?: string)
       variationGroups: finalVarGroups,
     };
   } catch (err: any) {
-    await browser.close().catch(() => {});
+    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
     console.error('[Shopee Scraper Error]:', err);
     console.log('[Shopee Scraper] Falling back to HTTP parser...');
     return await scrapeShopeeViaHttpFallback(targetUrl);

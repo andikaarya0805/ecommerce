@@ -29,3 +29,10 @@ scripts/seed*
 scripts/*.png
 scripts/*.json
 
+# Shopee & Scraper Profiles & Sessions
+.shopee*
+.shopee_profile/
+.shopee_server_profile/
+.shopee_cookie.txt
+.venv/
+

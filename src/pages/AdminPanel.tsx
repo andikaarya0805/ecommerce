@@ -159,6 +159,8 @@ export const AdminPanel: React.FC = () => {
   const [shopeeLoading, setShopeeLoading] = useState(false);
   const [scrapedShopeeData, setScrapedShopeeData] = useState<any | null>(null);
   const [isDirectSavingShopee, setIsDirectSavingShopee] = useState(false);
+  const [showShopeeCookieInput, setShowShopeeCookieInput] = useState(false);
+  const [shopeeCookie, setShopeeCookie] = useState(() => localStorage.getItem('shopee_scraper_cookie') || '');
 
   // Vouchers CMS State
   const [vouchers, setVouchers] = useState<any[]>([]);
@@ -547,6 +549,7 @@ export const AdminPanel: React.FC = () => {
   const openEditProduct = (p: any) => {
     setEditingProduct({
       ...p,
+      images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
       bikeCompatibility: p.bikeCompatibility || [],
       originCity: p.originCity || 'Jakarta Timur',
       promoTag: p.promoTag || '',
@@ -699,7 +702,10 @@ export const AdminPanel: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ url: shopeeUrlInput.trim() }),
+        body: JSON.stringify({
+          url: shopeeUrlInput.trim(),
+          cookie: shopeeCookie.trim() || undefined,
+        }),
       });
 
       if (res?.success && res.product) {
@@ -754,6 +760,7 @@ export const AdminPanel: React.FC = () => {
       weight_grams: p.weight || 500,
       originCity: 'Jakarta Timur',
       image: p.image,
+      images: p.images && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
       description: p.description,
       isPromo: true,
       isPaketUpgrade: p.category === 'part-cvt',
@@ -810,6 +817,7 @@ export const AdminPanel: React.FC = () => {
         weight_grams: p.weight || 500,
         originCity: 'Jakarta Timur',
         image: p.image,
+        images: p.images && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
         description: p.description,
         specs: specsObj,
         variationGroups: cleanVariationGroups,
@@ -856,6 +864,7 @@ export const AdminPanel: React.FC = () => {
       weight_grams: 500,
       originCity: 'Jakarta Timur',
       image: '',
+      images: [],
       description: 'Part racing performa tinggi standar kompetisi dan harian.',
       isPromo: true,
       isPaketUpgrade: false,
@@ -3823,6 +3832,64 @@ export const AdminPanel: React.FC = () => {
                   </div>
                 )}
 
+                {/* Galeri Foto Tambahan / Multi Gambar Shopee */}
+                {editingProduct.images && editingProduct.images.length > 0 && (
+                  <div className="p-3.5 bg-neutral-950/90 rounded-xl border border-neutral-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-[#E50914]" />
+                        <span>Semua Foto Galeri ({editingProduct.images.length} Foto)</span>
+                      </span>
+                      <span className="text-[10px] text-neutral-500">
+                        Klik foto untuk jadikan Foto Utama • Klik × untuk hapus
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1">
+                      {editingProduct.images.map((imgUrl: string, idx: number) => {
+                        const isMain = editingProduct.image === imgUrl;
+                        return (
+                          <div key={idx} className="relative group shrink-0">
+                            <img
+                              src={imgUrl}
+                              alt={`Foto ${idx + 1}`}
+                              referrerPolicy="no-referrer"
+                              onClick={() => setEditingProduct({ ...editingProduct, image: imgUrl })}
+                              className={`w-16 h-16 rounded-xl object-cover bg-black cursor-pointer border transition-all ${
+                                isMain
+                                  ? 'border-[#E50914] ring-2 ring-[#E50914]/60 scale-105'
+                                  : 'border-neutral-800 opacity-70 hover:opacity-100 hover:border-neutral-600'
+                              }`}
+                            />
+                            {isMain && (
+                              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#E50914] text-white text-[8px] font-black px-1.5 py-0.2 rounded-full shadow tracking-wider uppercase pointer-events-none">
+                                UTAMA
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newImgs = (editingProduct.images || []).filter((_: any, i: number) => i !== idx);
+                                const newMain = isMain ? (newImgs[0] || '') : editingProduct.image;
+                                setEditingProduct({
+                                  ...editingProduct,
+                                  images: newImgs,
+                                  image: newMain,
+                                });
+                              }}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-xs font-bold shadow-md opacity-80 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Hapus foto ini dari galeri"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-neutral-300 font-bold mb-1">Deskripsi Lengkap Produk</label>
                   <textarea
@@ -4175,6 +4242,60 @@ export const AdminPanel: React.FC = () => {
                 >
                   Kaliper Nissin Samurai
                 </button>
+              </div>
+
+              {/* Anti-Limit / Shopee Cookie Drawer */}
+              <div className="pt-2 border-t border-neutral-800/80 mt-2">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowShopeeCookieInput(!showShopeeCookieInput)}
+                    className="text-[11px] text-neutral-400 hover:text-orange-400 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    <span>{showShopeeCookieInput ? 'Tutup Pengaturan Anti-Limit' : 'Pengaturan Cookie Shopee (Bypass Limit / Anti-Mabok)'}</span>
+                    {shopeeCookie && (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded font-semibold flex items-center gap-1">
+                        <ShieldCheck className="w-2.5 h-2.5" /> Aktif
+                      </span>
+                    )}
+                  </button>
+                  {shopeeCookie && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        localStorage.removeItem('shopee_scraper_cookie');
+                        setShopeeCookie('');
+                        toast.info('Cookie Dihapus', 'Scraper kembali ke mode guest.');
+                      }}
+                      className="text-[10px] text-red-400 hover:underline cursor-pointer"
+                    >
+                      Reset Cookie
+                    </button>
+                  )}
+                </div>
+
+                {showShopeeCookieInput && (
+                  <div className="mt-2.5 p-3 bg-neutral-900/90 border border-neutral-800 rounded-xl space-y-2">
+                    <label className="text-[11px] font-bold text-neutral-300 block">
+                      Cookie Shopee (Biar Bebas Tarik Puluhan Produk Tanpa Kena Blokir):
+                    </label>
+                    <input
+                      type="password"
+                      value={shopeeCookie}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setShopeeCookie(val);
+                        localStorage.setItem('shopee_scraper_cookie', val.trim());
+                      }}
+                      placeholder="Tempel string Cookie dari tab Shopee kamu..."
+                      className="w-full px-3 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white text-xs placeholder-neutral-600 focus:outline-none focus:border-[#EE4D2D]"
+                    />
+                    <p className="text-[10px] text-neutral-400 leading-relaxed">
+                      💡 <b>Cara Ambil:</b> Di tab Shopee kamu yang sedang buka produk &rarr; tekan <kbd className="px-1 py-0.5 bg-neutral-800 rounded text-neutral-300">F12</kbd> &rarr; tab <b>Application</b> &rarr; <b>Cookies</b> &rarr; copy cookie (atau copy dari header request). Sekali disimpan, penarikan produk di server akan diperlakukan sebagai akun resmi, <b>100% bebas dari batasan bot</b>!
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

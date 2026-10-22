@@ -118,10 +118,17 @@ export function mapSupabaseProduct(p: any) {
     ? (typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants) : p.bike_variants)
     : (rawSpecs._bikeVariants || undefined);
 
+  const images = Array.isArray(p.images) && p.images.length > 0
+    ? p.images
+    : (Array.isArray(rawSpecs._images) && rawSpecs._images.length > 0
+        ? rawSpecs._images
+        : (p.image ? [p.image] : []));
+
   // Clean specs to not pollute customer display
   const specs = { ...rawSpecs };
   delete specs._variationGroups;
   delete specs._bikeVariants;
+  delete specs._images;
 
   return {
     id: p.id,
@@ -137,6 +144,7 @@ export function mapSupabaseProduct(p: any) {
     rating: Number(p.rating || 5.0),
     soldCount: Number(p.sold_count || p.soldCount || 0),
     image: p.image,
+    images,
     description: p.description,
     specs,
     isPromo: Boolean(p.is_promo ?? p.isPromo),
@@ -339,6 +347,7 @@ export async function createSupabaseProduct(p: any, targetDb?: any): Promise<{ s
     ...(typeof p.specs === 'object' && p.specs ? p.specs : {}),
     _variationGroups: p.variationGroups || [],
     _bikeVariants: p.bikeVariants || [],
+    _images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
   };
 
   const sbProduct = {
@@ -424,6 +433,7 @@ export async function updateSupabaseProduct(id: string, p: any, targetDb?: any):
     ...(typeof p.specs === 'object' && p.specs ? p.specs : {}),
     _variationGroups: p.variationGroups || [],
     _bikeVariants: p.bikeVariants || [],
+    _images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
   };
 
   const sbUpdate = {

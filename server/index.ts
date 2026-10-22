@@ -500,15 +500,21 @@ app.get('/api/products', async (req, res) => {
 
   const getCompat = db.prepare('SELECT bike_type FROM product_bike_compatibility WHERE product_id = ?');
 
-  const products = rawProducts.map((p: any) => ({
-    ...p,
-    specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
-    variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
-    bikeVariants: typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants || '[]') : (p.bikeVariants || undefined),
-    isPromo: p.isPromo === 1,
-    isPaketUpgrade: p.isPaketUpgrade === 1,
-    bikeCompatibility: getCompat.all(p.id).map((c: any) => c.bike_type),
-  }));
+  const products = rawProducts.map((p: any) => {
+    const sp = typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs || {};
+    return {
+      ...p,
+      specs: sp,
+      images: Array.isArray(p.images) && p.images.length > 0
+        ? p.images
+        : (Array.isArray(sp._images) && sp._images.length > 0 ? sp._images : (p.image ? [p.image] : [])),
+      variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
+      bikeVariants: typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants || '[]') : (p.bikeVariants || undefined),
+      isPromo: p.isPromo === 1,
+      isPaketUpgrade: p.isPaketUpgrade === 1,
+      bikeCompatibility: getCompat.all(p.id).map((c: any) => c.bike_type),
+    };
+  });
 
   res.json(products);
 });
@@ -533,9 +539,13 @@ app.get('/api/products/:slugOrId', async (req, res) => {
     .all(p.id)
     .map((c: any) => c.bike_type);
 
+  const sp = typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs || {};
   res.json({
     ...p,
-    specs: typeof p.specs === 'string' ? JSON.parse(p.specs || '{}') : p.specs,
+    specs: sp,
+    images: Array.isArray(p.images) && p.images.length > 0
+      ? p.images
+      : (Array.isArray(sp._images) && sp._images.length > 0 ? sp._images : (p.image ? [p.image] : [])),
     variationGroups: typeof p.variation_groups === 'string' ? JSON.parse(p.variation_groups || '[]') : (p.variationGroups || p.variation_groups || undefined),
     bikeVariants: typeof p.bike_variants === 'string' ? JSON.parse(p.bike_variants || '[]') : (p.bikeVariants || undefined),
     isPromo: p.isPromo === 1,
@@ -2094,6 +2104,7 @@ app.post('/api/admin/bulk-import-shopee', async (req: any, res: any) => {
         stock: 50,
         weight_grams: 650,
         image: img,
+        images: Array.isArray(raw.images) && raw.images.length > 0 ? raw.images : (img ? [img] : []),
         rating: 4.9,
         soldCount: raw.soldCount || 120,
         promoTag: 'MALL',
