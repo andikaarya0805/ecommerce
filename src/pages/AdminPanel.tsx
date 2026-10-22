@@ -46,6 +46,7 @@ import { safeFetchJson } from '../config/api';
 import { INITIAL_PRODUCTS, INITIAL_VOUCHERS } from '../data/products';
 import { getProductPriceRange } from '../data/productVariations';
 import { toast, confirmModal } from '../context/ToastContext';
+import { OFFICIAL_CATEGORIES, normalizeCategory, getCategoryLabel } from '../data/categories';
 
 export interface AdminVarOption {
   name: string;
@@ -126,6 +127,7 @@ export const AdminPanel: React.FC = () => {
   // Products CMS State
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState<string>('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState<string>('ALL');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [specRows, setSpecRows] = useState<{ key: string; value: string }[]>([]);
@@ -651,7 +653,7 @@ export const AdminPanel: React.FC = () => {
   const openCreateProduct = () => {
     setEditingProduct({
       name: '',
-      category: 'cvt',
+      category: 'part-cvt',
       bikeCompatibility: ['vario-pcx'],
       compatibilityText: 'Vario 125/150/160, PCX 150/160',
       fitmentTag: 'Plug & Play (PnP)',
@@ -893,12 +895,16 @@ export const AdminPanel: React.FC = () => {
   });
 
   // Filtered Products
-  const filteredProducts = products.filter(
-    (p) =>
+  const filteredProducts = products.filter((p) => {
+    const matchCategory =
+      productCategoryFilter === 'ALL' || normalizeCategory(p.category) === productCategoryFilter;
+    const matchSearch =
       !productSearch.trim() ||
       p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.category.toLowerCase().includes(productSearch.toLowerCase())
-  );
+      (p.category && p.category.toLowerCase().includes(productSearch.toLowerCase())) ||
+      getCategoryLabel(p.category).toLowerCase().includes(productSearch.toLowerCase());
+    return matchCategory && matchSearch;
+  });
 
   return (
     <div className="min-h-screen bg-carbon text-neutral-100 flex flex-col selection:bg-[#E50914] selection:text-white">
@@ -1133,7 +1139,7 @@ export const AdminPanel: React.FC = () => {
                       {analytics.lowStockItems.map((p: any) => (
                         <tr key={p.id} className="hover:bg-neutral-900/50">
                           <td className="p-3 font-semibold text-white">{p.name}</td>
-                          <td className="p-3 text-neutral-400 uppercase">{p.category}</td>
+                          <td className="p-3 text-neutral-400 uppercase">{getCategoryLabel(p.category)}</td>
                           <td className="p-3 font-racing text-[#E50914]">{formatIDR(p.price)}</td>
                           <td className="p-3">
                             <span className="px-2 py-0.5 rounded bg-red-950 text-red-300 font-bold border border-red-800">
@@ -1313,15 +1319,30 @@ export const AdminPanel: React.FC = () => {
         {activeTab === 'products' && (
           <div className="space-y-4 animate-in fade-in duration-150">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#141414] border border-neutral-800 p-4 rounded-2xl">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
-                <input
-                  type="text"
-                  placeholder="Cari part racing, kategori..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-xs text-white focus:outline-none focus:border-[#E50914]"
-                />
+              <div className="flex flex-wrap items-center gap-2 flex-1">
+                <div className="relative flex-1 min-w-[200px] max-w-sm">
+                  <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari part racing, kategori..."
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-xs text-white focus:outline-none focus:border-[#E50914]"
+                  />
+                </div>
+
+                <select
+                  value={productCategoryFilter}
+                  onChange={(e) => setProductCategoryFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-700 text-xs text-white font-medium focus:outline-none focus:border-[#E50914]"
+                >
+                  <option value="ALL">Semua Kategori (8)</option>
+                  {OFFICIAL_CATEGORIES.map((c) => (
+                    <option key={c.slug} value={c.slug}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <button
@@ -1387,7 +1408,7 @@ export const AdminPanel: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-3.5">
-                          <span className="uppercase text-neutral-200 font-bold block text-[11px]">{p.category}</span>
+                          <span className="uppercase text-neutral-200 font-bold block text-[11px]">{getCategoryLabel(p.category)}</span>
                           <span className="text-[10px] text-neutral-400">{p.originCity || 'Jakarta Timur'}</span>
                         </td>
                         <td className="p-3.5">
@@ -2300,16 +2321,15 @@ export const AdminPanel: React.FC = () => {
                   <div>
                     <label className="block text-neutral-300 font-bold mb-1">Kategori</label>
                     <select
-                      value={editingProduct.category}
+                      value={normalizeCategory(editingProduct.category)}
                       onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-700 text-white focus:outline-none focus:border-[#E50914]"
                     >
-                      <option value="paket-upgrade">Paket Upgrade CVT</option>
-                      <option value="cvt">CVT Part</option>
-                      <option value="pengereman">Pengereman</option>
-                      <option value="kaki-kaki">Kaki-Kaki & Shock</option>
-                      <option value="mesin">Mesin & Knalpot</option>
-                      <option value="aksesoris">Aksesoris</option>
+                      {OFFICIAL_CATEGORIES.map((cat) => (
+                        <option key={cat.slug} value={cat.slug}>
+                          {cat.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

@@ -13,75 +13,77 @@ import fs from "fs";
 import { createRequire } from "node:module";
 import bcrypt from "bcryptjs";
 
-// src/data/products.ts
-var CATEGORY_ITEMS = [
+// src/data/categories.ts
+var OFFICIAL_CATEGORIES = [
   {
-    id: "cat-nmax",
-    title: "Upgrade NMAX / AEROX / LEXI",
-    subtitle: "Maxi Yamaha Performance Center",
-    bikeFilter: "nmax-aerox",
-    categoryFilter: null,
-    badgeText: "Paling Laris",
-    count: 24,
+    slug: "blok-mesin",
+    label: "Blok Mesin",
     icon: "Flame",
-    tagline: "Koleksi lengkap CVT, rem, knalpot dan suspensi Yamaha 155cc"
+    tagline: "Blok silinder ceramic, piston forged, dan bore up kit racing",
+    badge: "Power Max"
   },
   {
-    id: "cat-vario",
-    title: "Upgrade VARIO / PCX / ADV",
-    subtitle: "Honda eSP+ Performance Specialist",
-    bikeFilter: "vario-pcx",
-    categoryFilter: null,
-    badgeText: "Official PnP",
-    count: 36,
-    icon: "Zap",
-    tagline: "Solusi anti gredek, pulley 13.8 derajat, dan rem radial KTC"
-  },
-  {
-    id: "cat-beat",
-    title: "Upgrade BEAT / SCOOPY / GENIO",
-    subtitle: "Harian Ngacir & Tanjakan Enteng",
-    bikeFilter: "beat-scoopy",
-    categoryFilter: null,
-    badgeText: "Paket Hemat",
-    count: 28,
-    icon: "Sparkles",
-    tagline: "Racikan kirian roller BRT & mangkok bolong motor sejuta umat"
-  },
-  {
-    id: "cat-paket-cvt",
-    title: "Paket Komplit Upgrade CVT",
-    subtitle: "Full Set Kirian Tinggal Pasang",
-    bikeFilter: null,
-    categoryFilter: "paket-upgrade",
-    badgeText: "Garansi 6 Bulan",
-    count: 16,
-    icon: "PackageCheck",
-    tagline: "Pulley + Mangkok + Roller BRT + Per CVT racikan dyno test TDR"
-  },
-  {
-    id: "cat-mangkok-pulley",
-    title: "Mangkok + Pulley Set",
-    subtitle: "Bahan OEM Bubut CNC Presisi",
-    bikeFilter: null,
-    categoryFilter: "cvt",
-    badgeText: "Presisi CNC",
-    count: 22,
-    icon: "Disc",
-    tagline: "Sudut derajat 13.5\xB0 - 13.8\xB0 dengan interlock anti selip"
-  },
-  {
-    id: "cat-kaki-pengereman",
-    title: "Kaki-Kaki & Pengereman (Shock, Master Rem, Velg)",
-    subtitle: "Safety & Visual Ganteng Maksimal",
-    bikeFilter: null,
-    categoryFilter: "pengereman",
-    badgeText: "Billet CNC",
-    count: 19,
+    slug: "shockbreaker",
+    label: "Shockbreaker",
     icon: "ShieldCheck",
-    tagline: "Master rem KTC Corsa Corta 16mm, disc floating, shock klik rebound"
+    tagline: "Suspensi tabung klik rebound & kompresi harian maupun balap",
+    badge: "Suspensi"
+  },
+  {
+    slug: "pengereman",
+    label: "Pengereman",
+    icon: "ShieldCheck",
+    tagline: "Master rem radial, kaliper monoblock, disc floating, selang braided",
+    badge: "Safety First"
+  },
+  {
+    slug: "velg",
+    label: "Velg",
+    icon: "Disc",
+    tagline: "Velg racing aluminium casting & forged ringan presisi tinggi",
+    badge: "Ringan & Kuat"
+  },
+  {
+    slug: "accesories",
+    label: "Accesories",
+    icon: "Sparkles",
+    tagline: "Aksesoris CNC, spion carbon, handgrip, dan baut probolt titanium",
+    badge: "Ganteng Max"
+  },
+  {
+    slug: "part-cvt",
+    label: "Part CVT",
+    icon: "Zap",
+    tagline: "Pulley bubut CNC, mangkok ganda bolong anti gredek, roller BRT, per CVT",
+    badge: "PnP Anti Gredek"
+  },
+  {
+    slug: "noken-as",
+    label: "Noken As",
+    icon: "PackageCheck",
+    tagline: "Camshaft racing profil tinggi pelatuk roller nafas panjang",
+    badge: "Top Speed"
+  },
+  {
+    slug: "lain-lain",
+    label: "Lain Lain",
+    icon: "PackageCheck",
+    tagline: "Suku cadang pelengkap, oli racing, gasket tembaga, dan part pendukung",
+    badge: "Pelengkap"
   }
 ];
+var CATEGORY_ITEMS = OFFICIAL_CATEGORIES.map((c) => ({
+  id: `cat-${c.slug}`,
+  title: c.label,
+  subtitle: c.tagline,
+  categoryFilter: c.slug,
+  badgeText: c.badge,
+  count: 12,
+  icon: c.icon,
+  tagline: c.tagline
+}));
+
+// src/data/products.ts
 var INITIAL_VOUCHERS = [
   {
     id: "vouch-1",
@@ -185,7 +187,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-1",
     name: "Super Roller BRT Black Diamond - Vario 125 / PCX / Beat Deluxe",
-    category: "cvt",
+    category: "part-cvt",
     compatibilityText: "Vario 125/150/160, PCX 150/160, Beat Deluxe/ESP",
     fitmentTag: "Plug & Play (PnP)",
     price: 95e3,
@@ -237,7 +239,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-3",
     name: "TDR CVT Full Upgrade Pack - Pulley, Mangkok Bolong, Per CVT & Roller Racing",
-    category: "paket-upgrade",
+    category: "part-cvt",
     compatibilityText: "Vario 125/150/160, PCX 150/160, NMAX, Aerox 155",
     fitmentTag: "Plug & Play (PnP)",
     price: 685e3,
@@ -262,7 +264,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-4",
     name: "Akrapovi\u010D Racing Exhaust Full System - Titanium Megaphone Header Stainless 304",
-    category: "mesin",
+    category: "blok-mesin",
     compatibilityText: "Vario 160, PCX 160, NMAX All New 2020-2024, Aerox Connected",
     fitmentTag: "Plug & Play (PnP)",
     price: 185e4,
@@ -289,7 +291,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-5",
     name: "Mangkok Kampas Ganda Racing Custom Bolong CNC Anti Gredek - Beat / Scoopy / Vario",
-    category: "cvt",
+    category: "part-cvt",
     compatibilityText: "Honda Beat Karbu/ESP/Deluxe, Scoopy, Genio, Vario 125/150",
     fitmentTag: "Plug & Play (PnP)",
     price: 195e3,
@@ -314,7 +316,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-6",
     name: "Shockbreaker Tabung Atas Racing Click Rebound 330mm / 310mm Jawir Platinum Series",
-    category: "kaki-kaki",
+    category: "shockbreaker",
     compatibilityText: "Vario 125/150/160, Beat, Scoopy, Mio Sporty, Fazzio",
     fitmentTag: "Plug & Play (PnP)",
     price: 89e4,
@@ -339,7 +341,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-7",
     name: "Paket Kirian Komplit Upgrade NMAX / Aerox / Lexi 155cc - Top Speed & Torsi",
-    category: "paket-upgrade",
+    category: "part-cvt",
     compatibilityText: "All New NMAX, Old NMAX, Aerox 155 Connected, Lexi",
     fitmentTag: "Plug & Play (PnP)",
     price: 52e4,
@@ -364,7 +366,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-8",
     name: "Paket Upgrade CVT Full Set Jawir Garage - Anti Gredek Vario & PCX Series",
-    category: "paket-upgrade",
+    category: "part-cvt",
     compatibilityText: "Vario 125 / 150 / 160 & PCX 150 / 160",
     fitmentTag: "Plug & Play (PnP)",
     price: 485e3,
@@ -389,7 +391,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-noken-as-ah1",
     name: "Noken As Camshaft BRT AH1 Racing Series - Beat Vario Scoopy PCX NMAX",
-    category: "mesin",
+    category: "noken-as",
     compatibilityText: "Universal Matic: Beat, Scoopy, Vario 125/150/160, NMAX, Aerox",
     fitmentTag: "Plug & Play (PnP)",
     price: 185e3,
@@ -427,7 +429,7 @@ var INITIAL_PRODUCTS = [
   {
     id: "prod-bore-up-ah1",
     name: "Blok Seher Silinder Keramik Bore Up Racing AH1 - 54mm 58mm 62mm 66mm",
-    category: "mesin",
+    category: "blok-mesin",
     compatibilityText: "Vario 125/150, PCX 150/160, Beat FI, NMAX 155, Aerox",
     fitmentTag: "Plug & Play (PnP)",
     price: 355e3,
@@ -461,6 +463,56 @@ var INITIAL_PRODUCTS = [
         ]
       }
     ]
+  },
+  {
+    id: "prod-velg-rcb",
+    name: "Velg Racing Billet SP522 Ring 14 Palang 5 Presisi Ringan - Beat / Vario / Scoopy",
+    category: "velg",
+    compatibilityText: "Honda Beat, Vario 125/150, Scoopy, Genio",
+    fitmentTag: "Plug & Play (PnP)",
+    price: 145e4,
+    originalPrice: 185e4,
+    discountPercent: 21,
+    promoTag: "Best Seller",
+    rating: 5,
+    soldCount: 412,
+    image: "/images/racing_rear_shock_1789096521276.jpg",
+    description: "Velg aluminium alloy casting berkekuatan tinggi dengan bobot super enteng. Pilihan velg juara balap matic road race Indonesia.",
+    specs: {
+      Ukuran: "Depan 14x1.40 & Belakang 14x1.60",
+      Bahan: "High Grade Aluminium Alloy",
+      Kelengkapan: "1 Pasang (Depan + Belakang) + Bearing & Bushing"
+    },
+    isPromo: true,
+    isPaketUpgrade: false,
+    stock: 12,
+    originCity: "Jakarta Timur",
+    bikeCompatibility: ["beat-scoopy", "vario-pcx"]
+  },
+  {
+    id: "prod-accesories-cnc",
+    name: "Spion Jalu Stang Bar End CNC + Handgrip Domino Racing Universal",
+    category: "accesories",
+    compatibilityText: "Universal Semua Motor Matic & Sport",
+    fitmentTag: "Plug & Play (PnP)",
+    price: 125e3,
+    originalPrice: 175e3,
+    discountPercent: 28,
+    promoTag: "Paket Hemat",
+    rating: 4.8,
+    soldCount: 1530,
+    image: "/images/ktc_master_rem_1789096462600.jpg",
+    description: "Aksesoris ganteng spion jalu stang aluminium CNC kaca biru anti silau dipadukan dengan handgrip Domino bahan karet empuk anti licin.",
+    specs: {
+      Material: "Aluminium Billet CNC + Blue Tinted Glass",
+      Handgrip: "Soft Compound Rubber Dual Texture",
+      Kelengkapan: "1 Pasang Spion Jalu + 1 Pasang Handgrip"
+    },
+    isPromo: false,
+    isPaketUpgrade: false,
+    stock: 50,
+    originCity: "Jakarta Timur",
+    bikeCompatibility: ["vario-pcx", "nmax-aerox", "beat-scoopy", "mio-series", "sport-bebek"]
   }
 ];
 
@@ -1032,8 +1084,9 @@ function ensureColumn(tableName, colName, colDef) {
 function seedDatabase(targetDb = db) {
   if (targetDb.isInMemory) return;
   try {
+    targetDb.exec(`DELETE FROM categories`);
     const insertCategory = targetDb.prepare(`
-      INSERT OR IGNORE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
+      INSERT OR REPLACE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const cat of CATEGORY_ITEMS) {
@@ -1320,6 +1373,23 @@ function initDb() {
           updateVariants.run(JSON.stringify(p.bikeVariants), p.id);
         }
       }
+      seedDatabase(db);
+      db.exec(`
+        UPDATE products SET category = 'part-cvt' WHERE category IN ('cvt', 'paket-upgrade');
+        UPDATE products SET category = 'pengereman' WHERE category IN ('rem');
+        UPDATE products SET category = 'shockbreaker' WHERE category IN ('kaki-kaki') AND (name LIKE '%shock%' OR name LIKE '%suspensi%');
+        UPDATE products SET category = 'velg' WHERE category IN ('kaki-kaki') AND (name LIKE '%velg%' OR name LIKE '%rim%');
+        UPDATE products SET category = 'shockbreaker' WHERE category IN ('kaki-kaki');
+        UPDATE products SET category = 'noken-as' WHERE (category IN ('mesin') OR name LIKE '%noken%' OR name LIKE '%camshaft%') AND name NOT LIKE '%blok%' AND name NOT LIKE '%exhaust%' AND name NOT LIKE '%knalpot%';
+        UPDATE products SET category = 'blok-mesin' WHERE category IN ('mesin');
+        UPDATE products SET category = 'accesories' WHERE category IN ('aksesoris', 'accessories');
+      `);
+      const updateProdCat = db.prepare("UPDATE products SET category = ? WHERE id = ?");
+      for (const p of INITIAL_PRODUCTS) {
+        if (p.category) {
+          updateProdCat.run(p.category, p.id);
+        }
+      }
     } catch (e) {
     }
     try {
@@ -1601,7 +1671,7 @@ async function createSupabaseProduct(p, targetDb) {
     id,
     name: p.name,
     slug,
-    category: p.category || "cvt",
+    category: p.category || "part-cvt",
     compatibility_text: p.compatibilityText || "Universal",
     fitment_tag: p.fitmentTag || "Plug & Play (PnP)",
     price: Number(p.price || 0),
@@ -1648,7 +1718,7 @@ async function createSupabaseProduct(p, targetDb) {
         id,
         p.name,
         slug,
-        p.category || "cvt",
+        p.category || "part-cvt",
         p.compatibilityText || "Universal",
         p.fitmentTag || "Plug & Play (PnP)",
         p.price || 0,
@@ -4276,7 +4346,7 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware, async (req, res
       id,
       p.name,
       slug,
-      p.category || "cvt",
+      p.category || "part-cvt",
       p.compatibilityText || "Universal",
       p.fitmentTag || "Plug & Play (PnP)",
       p.price || 0,

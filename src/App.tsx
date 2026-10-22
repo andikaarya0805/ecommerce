@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Product, Voucher, CartItem, UserBike, BikeType, MainTabType, SortOption } from './types';
 import { CategoryItem } from './components/VerticalCategoryList';
 import { INITIAL_PRODUCTS, CATEGORY_ITEMS } from './data/products';
+import { normalizeCategory, getCategoryLabel } from './data/categories';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { Header } from './components/Header';
 import { BrandHeroSection } from './components/BrandHeroSection';
@@ -52,6 +53,7 @@ function StoreFront() {
   const [searchQuery, setSearchQuery] = useState<string>(urlQuery);
   const [activeTab, setActiveTab] = useState<MainTabType>('semua');
   const [selectedBikeType, setSelectedBikeType] = useState<BikeType>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>('populer');
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   
@@ -228,12 +230,8 @@ function StoreFront() {
       setActiveTab('semua');
       addToast('Filter Tipe Motor Diterapkan', `Menampilkan part untuk ${categoryTitle}`);
     } else if (catFilter) {
-      if (catFilter === 'paket-upgrade') {
-        setActiveTab('paket-upgrade');
-      } else {
-        setActiveTab('semua');
-        setSearchQuery(catFilter === 'cvt' ? 'CVT' : 'Rem');
-      }
+      setSelectedCategory(catFilter);
+      setActiveTab('semua');
       addToast('Kategori Dipilih', categoryTitle);
     }
   };
@@ -242,9 +240,14 @@ function StoreFront() {
   const filteredProducts = useMemo(() => {
     let list = [...products];
 
+    // Category filter
+    if (selectedCategory) {
+      list = list.filter((p) => normalizeCategory(p.category) === selectedCategory);
+    }
+
     // Main Tab filtering
     if (activeTab === 'paket-upgrade') {
-      list = list.filter((p) => p.isPaketUpgrade || p.category === 'paket-upgrade');
+      list = list.filter((p) => p.isPaketUpgrade || p.category === 'paket-upgrade' || normalizeCategory(p.category) === 'part-cvt');
     } else if (activeTab === 'promo') {
       list = list.filter((p) => p.isPromo || p.discountPercent >= 25);
     }
@@ -342,6 +345,24 @@ function StoreFront() {
               totalProducts={filteredProducts.length}
             />
 
+            {/* Active Category Filter Tag if selected */}
+            {selectedCategory && (
+              <div className="flex items-center gap-2 px-1 mb-2">
+                <span className="text-[11px] text-neutral-400">Filter Kategori:</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-950/80 border border-red-800 text-xs font-bold text-red-200">
+                  <span>{getCategoryLabel(selectedCategory)}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(null)}
+                    className="hover:text-white text-neutral-400 hover:bg-neutral-800 rounded-full w-4 h-4 inline-flex items-center justify-center cursor-pointer ml-1"
+                    title="Hapus Filter Kategori"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            )}
+
             {/* 2-Column Product Grid (Mobile-First) */}
             <ProductGrid
               products={filteredProducts}
@@ -352,6 +373,7 @@ function StoreFront() {
               }}
               onResetFilters={() => {
                 setSelectedBikeType('all');
+                setSelectedCategory(null);
                 setSearchQuery('');
                 setActiveTab('semua');
                 setSortOption('populer');

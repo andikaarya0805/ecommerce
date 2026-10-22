@@ -345,7 +345,7 @@ export async function createSupabaseProduct(p: any, targetDb?: any): Promise<{ s
     id,
     name: p.name,
     slug,
-    category: p.category || 'cvt',
+    category: p.category || 'part-cvt',
     compatibility_text: p.compatibilityText || 'Universal',
     fitment_tag: p.fitmentTag || 'Plug & Play (PnP)',
     price: Number(p.price || 0),
@@ -393,7 +393,7 @@ export async function createSupabaseProduct(p: any, targetDb?: any): Promise<{ s
           isPromo, isPaketUpgrade, stock, weight_grams, originCity, variation_groups, bike_variants, is_active
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        id, p.name, slug, p.category || 'cvt', p.compatibilityText || 'Universal',
+        id, p.name, slug, p.category || 'part-cvt', p.compatibilityText || 'Universal',
         p.fitmentTag || 'Plug & Play (PnP)', p.price || 0, p.originalPrice || null,
         p.discountPercent || 0, p.promoTag || null, p.rating || 5.0, p.soldCount || 0,
         p.image || '/images/default.jpg', p.description || '', JSON.stringify(p.specs || {}),

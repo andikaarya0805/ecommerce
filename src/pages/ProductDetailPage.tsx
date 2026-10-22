@@ -30,6 +30,7 @@ import {
   calculateSelectedPrice,
 } from '../data/productVariations';
 import { formatIDR } from '../components/ProductCard';
+import { getCategoryLabel } from '../data/categories';
 import { safeFetchJson } from '../config/api';
 import { useCart } from '../context/CartContext';
 import { Header } from '../components/Header';
@@ -402,7 +403,7 @@ export const ProductDetailPage: React.FC = () => {
           </Link>
           <ChevronRight className="w-3.5 h-3.5 text-neutral-600" />
           <Link to="/" className="text-neutral-400 hover:text-white capitalize transition-colors">
-            {product.category?.replace('-', ' ') || 'Suku Cadang'}
+            {getCategoryLabel(product.category)}
           </Link>
           <ChevronRight className="w-3.5 h-3.5 text-neutral-600" />
           <span className="text-neutral-200 font-medium truncate max-w-[280px] sm:max-w-md">
@@ -842,7 +843,7 @@ export const ProductDetailPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-xs">
               <div className="flex justify-between py-1.5 border-b border-neutral-800/60">
                 <span className="text-neutral-400 w-36">Kategori</span>
-                <span className="font-semibold text-white capitalize">{product.category}</span>
+                <span className="font-semibold text-white capitalize">{getCategoryLabel(product.category)}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-neutral-800/60">
                 <span className="text-neutral-400 w-36">Merek / Speedshop</span>

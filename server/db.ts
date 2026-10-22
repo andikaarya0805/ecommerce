@@ -528,8 +528,9 @@ function ensureColumn(tableName: string, colName: string, colDef: string) {
 export function seedDatabase(targetDb: any = db) {
   if (targetDb.isInMemory) return;
   try {
+    targetDb.exec(`DELETE FROM categories`);
     const insertCategory = targetDb.prepare(`
-      INSERT OR IGNORE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
+      INSERT OR REPLACE INTO categories (id, title, subtitle, bikeFilter, categoryFilter, badgeText, count, icon, tagline)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const cat of CATEGORY_ITEMS) {
@@ -837,6 +838,28 @@ export function initDb() {
       for (const p of INITIAL_PRODUCTS) {
         if (p.bikeVariants) {
           updateVariants.run(JSON.stringify(p.bikeVariants), p.id);
+        }
+      }
+
+      // Re-seed official categories
+      seedDatabase(db);
+
+      // Migrate existing products to 8 official categories
+      db.exec(`
+        UPDATE products SET category = 'part-cvt' WHERE category IN ('cvt', 'paket-upgrade');
+        UPDATE products SET category = 'pengereman' WHERE category IN ('rem');
+        UPDATE products SET category = 'shockbreaker' WHERE category IN ('kaki-kaki') AND (name LIKE '%shock%' OR name LIKE '%suspensi%');
+        UPDATE products SET category = 'velg' WHERE category IN ('kaki-kaki') AND (name LIKE '%velg%' OR name LIKE '%rim%');
+        UPDATE products SET category = 'shockbreaker' WHERE category IN ('kaki-kaki');
+        UPDATE products SET category = 'noken-as' WHERE (category IN ('mesin') OR name LIKE '%noken%' OR name LIKE '%camshaft%') AND name NOT LIKE '%blok%' AND name NOT LIKE '%exhaust%' AND name NOT LIKE '%knalpot%';
+        UPDATE products SET category = 'blok-mesin' WHERE category IN ('mesin');
+        UPDATE products SET category = 'accesories' WHERE category IN ('aksesoris', 'accessories');
+      `);
+
+      const updateProdCat = db.prepare('UPDATE products SET category = ? WHERE id = ?');
+      for (const p of INITIAL_PRODUCTS) {
+        if (p.category) {
+          updateProdCat.run(p.category, p.id);
         }
       }
     } catch (e) {

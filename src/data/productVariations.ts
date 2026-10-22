@@ -1,4 +1,5 @@
 import { Product, ProductVariationGroup, ProductVariationOption } from '../types';
+import { normalizeCategory } from './categories';
 
 export const getOptionName = (opt: string | ProductVariationOption): string => {
   return typeof opt === 'string' ? opt : opt.name;
@@ -84,7 +85,9 @@ export const getProductVariationGroups = (product: Product): ProductVariationGro
 
   // Group 2: Category-based default Group 2
   const nameLower = product.name.toLowerCase();
-  if (product.category === 'cvt') {
+  const cat = normalizeCategory(product.category);
+
+  if (cat === 'part-cvt') {
     if (nameLower.includes('roller')) {
       finalGroups.push({
         name: 'Ukuran Berat Roller',
@@ -105,6 +108,15 @@ export const getProductVariationGroups = (product: Product): ProductVariationGro
           'CNC Bubut Custom Super Ringan',
         ],
       });
+    } else if (nameLower.includes('paket') || product.isPaketUpgrade) {
+      finalGroups.push({
+        name: 'Karakter Racikan Per & Roller',
+        options: [
+          'Harian Stop & Go (Per 1000 RPM + Roller 10g)',
+          'Akselerasi Spontan (Per 1500 RPM + Roller 9g)',
+          'Touring & Nafas Panjang (Per 2000 RPM + Roller 11g)',
+        ],
+      });
     } else {
       finalGroups.push({
         name: 'Derajat Kemiringan Pulley',
@@ -115,16 +127,7 @@ export const getProductVariationGroups = (product: Product): ProductVariationGro
         ],
       });
     }
-  } else if (product.category === 'paket-upgrade' || product.isPaketUpgrade) {
-    finalGroups.push({
-      name: 'Karakter Racikan Per & Roller',
-      options: [
-        'Harian Stop & Go (Per 1000 RPM + Roller 10g)',
-        'Akselerasi Spontan (Per 1500 RPM + Roller 9g)',
-        'Touring & Nafas Panjang (Per 2000 RPM + Roller 11g)',
-      ],
-    });
-  } else if (product.category === 'pengereman') {
+  } else if (cat === 'pengereman') {
     finalGroups.push({
       name: 'Posisi / Sisi Rem',
       options: [
@@ -133,7 +136,7 @@ export const getProductVariationGroups = (product: Product): ProductVariationGro
         { name: '1 Pasang (Kanan + Kiri Lengkap)', priceModifier: Math.round(product.price * 0.85) },
       ],
     });
-  } else if (product.category === 'kaki-kaki') {
+  } else if (cat === 'shockbreaker') {
     finalGroups.push({
       name: 'Ukuran & Warna Shock',
       options: [
@@ -143,15 +146,54 @@ export const getProductVariationGroups = (product: Product): ProductVariationGro
         'Yellow Gold Edition (310mm)',
       ],
     });
-  } else if (product.category === 'mesin') {
+  } else if (cat === 'velg') {
     finalGroups.push({
-      name: 'Tipe Header & Silincer',
+      name: 'Pilihan Ukuran & Warna Velg',
       options: [
-        'Header Stainless + Megaphone Silincer',
-        'Full Titanium Hexagonal Real Carbon',
-        'Silincer Bulat Matte Black Stealth',
+        'Ring 14 - Black Glossy CNC',
+        'Ring 14 - Gold Matte Racing',
+        'Ring 17 - Titanium Silver Billet',
       ],
     });
+  } else if (cat === 'accesories') {
+    finalGroups.push({
+      name: 'Pilihan Warna Anodized',
+      options: [
+        'Stealth Black Anodized',
+        'Crimson Red Edition',
+        'Titanium Blue Polish',
+        'Gold Billet Edition',
+      ],
+    });
+  } else if (cat === 'noken-as') {
+    finalGroups.push({
+      name: 'Profile Camshaft / Tipe',
+      options: [
+        'Type T1 (Harian Responsif & Irit)',
+        'Type T2 (Bore Up & Touring Cepat)',
+        'Type R (Kompetisi Racing Lift Tinggi)',
+      ],
+    });
+  } else if (cat === 'blok-mesin') {
+    if (nameLower.includes('knalpot')) {
+      finalGroups.push({
+        name: 'Tipe Header & Silincer',
+        options: [
+          'Header Stainless + Megaphone Silincer',
+          'Full Titanium Hexagonal Real Carbon',
+          'Silincer Bulat Matte Black Stealth',
+        ],
+      });
+    } else {
+      finalGroups.push({
+        name: 'Pilihan Diameter Piston',
+        options: [
+          '54 mm (Standar Porting)',
+          '58 mm (150cc Harian Kencang)',
+          '62 mm (180cc Touring Cepat)',
+        ],
+      });
+    }
   } else {
     finalGroups.push({
       name: 'Pilihan Spesifikasi',

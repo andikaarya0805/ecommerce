@@ -22,11 +22,27 @@ export interface ProductVariationGroup {
   options: (string | ProductVariationOption)[];
 }
 
+export type ProductCategory =
+  | 'blok-mesin'
+  | 'shockbreaker'
+  | 'pengereman'
+  | 'velg'
+  | 'accesories'
+  | 'part-cvt'
+  | 'noken-as'
+  | 'lain-lain'
+  | 'paket-upgrade'
+  | 'cvt'
+  | 'kaki-kaki'
+  | 'mesin'
+  | 'aksesoris'
+  | string;
+
 export interface Product {
   id: string;
   name: string;
   slug?: string;
-  category: 'paket-upgrade' | 'cvt' | 'pengereman' | 'kaki-kaki' | 'mesin' | 'aksesoris';
+  category: ProductCategory;
   bikeCompatibility: BikeType[];
   compatibilityText: string;
   fitmentTag: string;

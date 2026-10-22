@@ -1853,7 +1853,7 @@ app.post('/api/admin/products', authMiddleware, adminMiddleware, async (req: any
       id,
       p.name,
       slug,
-      p.category || 'cvt',
+      p.category || 'part-cvt',
       p.compatibilityText || 'Universal',
       p.fitmentTag || 'Plug & Play (PnP)',
       p.price || 0,
